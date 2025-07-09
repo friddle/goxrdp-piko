@@ -37,7 +37,7 @@ all: build
 build:
 	@echo "构建 ${BINARY_NAME} for ${GOOS}/${GOARCH}..."
 	@mkdir -p ${BUILD_DIR}
-	CGO_ENABLED=${CGO_ENABLED} ${GO} build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME} ./main.go
+	CGO_ENABLED=${CGO_ENABLED} IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME} ./main.go
 	@echo "构建完成: ${BUILD_DIR}/${BINARY_NAME}"
 
 # 构建所有平台
@@ -48,7 +48,7 @@ build-all:
 	@for platform in ${PLATFORMS}; do \
 		IFS='/' read -r os arch <<< "$$platform"; \
 		echo "构建 $$os/$$arch..."; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch ./main.go; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch ./main.go; \
 		if [ "$$os" = "windows" ]; then \
 			mv ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch.exe; \
 		fi; \
@@ -60,16 +60,16 @@ build-all:
 build-linux:
 	@echo "构建 Linux 版本..."
 	@mkdir -p ${DIST_DIR}
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-amd64 ./main.go
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-arm64 ./main.go
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-amd64 ./main.go
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-arm64 ./main.go
 	@echo "Linux 版本构建完成"
 
 .PHONY: build-darwin
 build-darwin:
 	@echo "构建 macOS 版本..."
 	@mkdir -p ${DIST_DIR}
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-amd64 ./main.go
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-arm64 ./main.go
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-amd64 ./main.go
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-arm64 ./main.go
 	@echo "macOS 版本构建完成"
 
 # Android 编译目标
@@ -84,25 +84,33 @@ build-android:
 	fi
 	@for api in 28 29 30 31 32 33 34 35; do \
 		echo "构建 Android API $$api 版本..."; \
-		GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+		GOOS=android GOARCH=arm64 CGO_ENABLED=1 IMAGE_DEBUG=false \
 		CC=$(ANDROID_NDK)/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android$$api-clang \
 		CXX=$(ANDROID_NDK)/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android$$api-clang++ \
 		${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-android-arm64-api$$api ./main.go; \
 	done
 	@echo "所有 Android API 版本构建完成，输出目录: ${DIST_DIR}"
 
+# Debug 构建目标
+.PHONY: build-debug
+build-debug:
+	@echo "构建 Debug 版本 (启用 DEBUG 输出)..."
+	@mkdir -p ${BUILD_DIR}
+	CGO_ENABLED=${CGO_ENABLED} IMAGE_DEBUG=true ${GO} build ${LDFLAGS} -o ${BUILD_DIR}/${BINARY_NAME}-debug ./main.go
+	@echo "Debug 版本构建完成: ${BUILD_DIR}/${BINARY_NAME}-debug"
+
 # 帮助
 .PHONY: help
 help:
 	@echo "可用的 Make 目标:"
-	@echo "  build        - 构建当前平台版本"
-	@echo "  build-all    - 构建所有平台版本"
-	@echo "  build-linux  - 构建 Linux 版本"
-	@echo "  build-darwin - 构建 macOS 版本"
-	@echo "  build-android- 构建 Android API ${ANDROID_API} 版本"
-	@echo "  build-android-all - 构建所有 Android API 版本 (28-35)"
+	@echo "  build        - 构建当前平台版本 (默认不启用 DEBUG)"
+	@echo "  build-debug  - 构建 Debug 版本 (启用 DEBUG 输出)"
+	@echo "  build-all    - 构建所有平台版本 (默认不启用 DEBUG)"
+	@echo "  build-linux  - 构建 Linux 版本 (默认不启用 DEBUG)"
+	@echo "  build-darwin - 构建 macOS 版本 (默认不启用 DEBUG)"
 	@echo "  help         - 显示此帮助信息"
 	@echo ""
 	@echo "环境变量:"
 	@echo "  ANDROID_SDK  - Android SDK 路径 (默认: ~/sdk/Android)"
-	@echo "  ANDROID_API  - Android API 版本 (默认: 23)" 
+	@echo "  ANDROID_API  - Android API 版本 (默认: 23)"
+	@echo "  IMAGE_DEBUG  - 是否启用图像处理调试输出 (默认: false)" 

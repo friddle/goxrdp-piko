@@ -169,12 +169,12 @@ func (ws *WebServer) Start(ctx context.Context) error {
 	}
 
 	fs := http.FileServer(http.FS(webFS))
-	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/html/index.html", http.StatusFound)
+	router.HandleFunc(staticPrefix+"/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, staticPrefix+"/html/index.html", http.StatusFound)
 	})
 
 	// API路由 - 在基础路由下，必须在静态文件服务之前
-	api := router.PathPrefix(staticPrefix + "/api").Subrouter()
+	api := router.PathPrefix(staticPrefix + "/html/api").Subrouter()
 	api.HandleFunc("/status", ws.handleStatus).Methods("GET")
 	api.HandleFunc("/connect", ws.handleConnect).Methods("POST")
 	api.HandleFunc("/disconnect", ws.handleDisconnect).Methods("POST")
@@ -218,7 +218,10 @@ func (ws *WebServer) Start(ctx context.Context) error {
 	}
 
 	// 静态文件路由 - 处理web目录下的所有静态资源（放在最后）
-	router.PathPrefix(staticPrefix + "/").Handler(http.StripPrefix(staticPrefix, fs))
+	router.PathPrefix(staticPrefix + "/css").Handler(http.StripPrefix(staticPrefix, fs))
+	router.PathPrefix(staticPrefix + "/js").Handler(http.StripPrefix(staticPrefix, fs))
+	router.PathPrefix(staticPrefix + "/img").Handler(http.StripPrefix(staticPrefix, fs))
+	router.PathPrefix(staticPrefix + "/html").Handler(http.StripPrefix(staticPrefix, fs))
 
 	// 创建HTTP服务器
 	server := &http.Server{

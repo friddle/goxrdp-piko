@@ -115,7 +115,7 @@
         }
         
         // 方法2: 通过HTTP API发送flush请求
-        fetch('/api/flush', {
+        fetch('./api/flush', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -346,7 +346,7 @@
     
     // 检查RDP状态
     function checkRDPStatus() {
-        fetch('/api/rdp-status')
+        fetch('./api/rdp-status')
             .then(response => response.json())
             .then(data => {
                 console.log('[index.html] RDP状态:', data);
@@ -376,7 +376,7 @@
         }
         
         // 检查是否有配置信息
-        fetch('/api/rdp-info')
+        fetch('./api/rdp-info')
             .then(response => response.json())
             .then(data => {
                 console.log('[index.html] RDP配置信息:', data);
@@ -401,7 +401,7 @@
         console.log('[index.html] 开始自动连接RDP');
         
         // 获取配置信息
-        fetch('/api/rdp-info')
+        fetch('./api/rdp-info')
             .then(response => response.json())
             .then(data => {
                 var host = data.host || '';
@@ -416,7 +416,7 @@
                 }
                 
                 // 检查是否有密码配置
-                fetch('/api/rdp-status')
+                fetch('./api/rdp-status')
                     .then(response => response.json())
                     .then(statusData => {
                         var hasPassword = statusData.config && statusData.config.xrdpPass && statusData.config.xrdpPass !== '';
@@ -438,7 +438,7 @@
                         };
                         
                         // 发送连接请求
-                        fetch('/api/connect', {
+                        fetch('./api/connect', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'

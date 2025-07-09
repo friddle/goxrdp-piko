@@ -18,7 +18,7 @@
  */
 
 (function() {
-	// https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/code
+	// https://developer.mozilla.org/en-US/docs/Web./api/KeyboardEvent/code
 	var KeyMap = {
 	 	"" : 0x0000,
 	 	"Escape" : 0x0001,
