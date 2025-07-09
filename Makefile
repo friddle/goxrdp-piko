@@ -26,7 +26,7 @@ DIST_DIR=dist
 BUILD_DIR=dist
 
 # 支持的平台
-PLATFORMS=linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+PLATFORMS=linux/amd64 windows/amd64
 
 # 默认目标
 .PHONY: all
@@ -48,9 +48,13 @@ build-all:
 	@for platform in ${PLATFORMS}; do \
 		IFS='/' read -r os arch <<< "$$platform"; \
 		echo "构建 $$os/$$arch..."; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch ./main.go; \
 		if [ "$$os" = "windows" ]; then \
-			mv ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch.exe; \
+			GOOS=$$os GOARCH=$$arch CGO_ENABLED=1 IMAGE_DEBUG=false \
+			CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ \
+			${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch.exe ./main.go; \
+		else \
+			GOOS=$$os GOARCH=$$arch CGO_ENABLED=1 IMAGE_DEBUG=false \
+			${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-$$os-$$arch ./main.go; \
 		fi; \
 	done
 	@echo "所有平台构建完成，输出目录: ${DIST_DIR}"
@@ -60,17 +64,17 @@ build-all:
 build-linux:
 	@echo "构建 Linux 版本..."
 	@mkdir -p ${DIST_DIR}
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-amd64 ./main.go
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-arm64 ./main.go
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-linux-amd64 ./main.go
 	@echo "Linux 版本构建完成"
 
-.PHONY: build-darwin
-build-darwin:
-	@echo "构建 macOS 版本..."
+.PHONY: build-windows
+build-windows:
+	@echo "构建 Windows 版本..."
 	@mkdir -p ${DIST_DIR}
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-amd64 ./main.go
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 IMAGE_DEBUG=false ${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-darwin-arm64 ./main.go
-	@echo "macOS 版本构建完成"
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 IMAGE_DEBUG=false \
+	CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ \
+	${GO} build ${LDFLAGS} -o ${DIST_DIR}/${BINARY_NAME}-windows-amd64.exe ./main.go
+	@echo "Windows 版本构建完成"
 
 # Android 编译目标
 .PHONY: build-android
@@ -107,10 +111,10 @@ help:
 	@echo "  build-debug  - 构建 Debug 版本 (启用 DEBUG 输出)"
 	@echo "  build-all    - 构建所有平台版本 (默认不启用 DEBUG)"
 	@echo "  build-linux  - 构建 Linux 版本 (默认不启用 DEBUG)"
-	@echo "  build-darwin - 构建 macOS 版本 (默认不启用 DEBUG)"
+	@echo "  build-windows - 构建 Windows 版本 (默认不启用 DEBUG)"
 	@echo "  help         - 显示此帮助信息"
 	@echo ""
 	@echo "环境变量:"
-	@echo "  ANDROID_SDK  - Android SDK 路径 (默认: ~/sdk/Android)"
-	@echo "  ANDROID_API  - Android API 版本 (默认: 23)"
-	@echo "  IMAGE_DEBUG  - 是否启用图像处理调试输出 (默认: false)" 
+	@echo ""
+	@echo "Windows 交叉编译要求:"
+	@echo "  需要安装 MinGW 交叉编译器: sudo pacman -S mingw-w64-gcc" 

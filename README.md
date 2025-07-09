@@ -2,7 +2,7 @@
 
 A Windows RDP remote desktop tool based on grdp protocol and piko network forwarding. Access and control Windows remote desktop through web browsers without complex network configuration and external network addresses.
 
-[grdp](https://github.com/friddle/grdp) - Go language implementation of RDP protocol client
+[grdp](https://github.com/xxx/grdp) - Go language implementation of RDP protocol client
 [piko](https://github.com/andydunstall/piko) - Lightweight network tunnel service
 
 ## Project Features
