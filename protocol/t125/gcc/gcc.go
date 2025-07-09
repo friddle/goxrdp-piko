@@ -11,11 +11,11 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/tomatome/grdp/glog"
+	"github.com/friddle/grdp/glog"
 
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/protocol/t125/per"
 	"github.com/lunixbochs/struc"
-	"github.com/tomatome/grdp/core"
-	"github.com/tomatome/grdp/protocol/t125/per"
 )
 
 var t124_02_98_oid = []byte{0, 0, 20, 124, 0, 1}
@@ -258,9 +258,9 @@ func NewClientCoreData() *ClientCoreData {
 	var ClientName [32]byte
 	copy(ClientName[:], core.UnicodeEncode(name)[:])
 	return &ClientCoreData{
-		RDP_VERSION_5_PLUS, 1280, 800, RNS_UD_COLOR_8BPP,
+		RDP_VERSION_5_PLUS, 1280, 720, RNS_UD_COLOR_8BPP,
 		RNS_UD_SAS_DEL, US, 3790, ClientName, KT_IBM_101_102_KEYS,
-		0, 12, [64]byte{}, RNS_UD_COLOR_8BPP, 1, 0, HIGH_COLOR_24BPP,
+		0, 12, [64]byte{}, RNS_UD_COLOR_8BPP, 1, 0, HIGH_COLOR_8BPP,
 		RNS_UD_15BPP_SUPPORT | RNS_UD_16BPP_SUPPORT | RNS_UD_24BPP_SUPPORT | RNS_UD_32BPP_SUPPORT,
 		RNS_UD_CS_SUPPORT_ERRINFO_PDU, [64]byte{}, 0, 0, 0}
 }

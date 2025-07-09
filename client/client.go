@@ -2,12 +2,12 @@
 package client
 
 import (
-	"log"
-	"os"
+	"fmt"
 
-	"github.com/tomatome/grdp/glog"
-	"github.com/tomatome/grdp/protocol/pdu"
-	"github.com/tomatome/grdp/protocol/rfb"
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/glog"
+	"github.com/friddle/grdp/protocol/pdu"
+	"github.com/friddle/grdp/protocol/rfb"
 )
 
 const (
@@ -34,9 +34,8 @@ type Control interface {
 }
 
 func init() {
-	glog.SetLevel(glog.INFO)
-	logger := log.New(os.Stdout, "", 0)
-	glog.SetLogger(logger)
+	// 配置glog输出到stdout
+	glog.InitStdout(glog.INFO)
 }
 
 type Client struct {
@@ -76,21 +75,29 @@ func (c *Client) Login() error {
 }
 
 func (c *Client) KeyUp(sc int, name string) {
+	glog.Infof("键盘事件: KeyUp - 扫描码:%d, 按键名称:'%s'", sc, name)
 	c.ctl.KeyUp(sc, name)
 }
 func (c *Client) KeyDown(sc int, name string) {
+	glog.Infof("键盘事件: KeyDown - 扫描码:%d, 按键名称:'%s'", sc, name)
 	c.ctl.KeyDown(sc, name)
 }
 func (c *Client) MouseMove(x, y int) {
+	glog.Debugf("鼠标事件: MouseMove - 位置(%d, %d)", x, y)
 	c.ctl.MouseMove(x, y)
 }
 func (c *Client) MouseWheel(scroll, x, y int) {
+	glog.Infof("鼠标事件: MouseWheel - 滚动:%d, 位置(%d, %d)", scroll, x, y)
 	c.ctl.MouseWheel(scroll, x, y)
 }
 func (c *Client) MouseUp(button, x, y int) {
+	buttonName := getMouseButtonName(button)
+	glog.Infof("鼠标事件: MouseUp - 按钮:%s(%d), 位置(%d, %d)", buttonName, button, x, y)
 	c.ctl.MouseUp(button, x, y)
 }
 func (c *Client) MouseDown(button, x, y int) {
+	buttonName := getMouseButtonName(button)
+	glog.Infof("鼠标事件: MouseDown - 按钮:%s(%d), 位置(%d, %d)", buttonName, button, x, y)
 	c.ctl.MouseDown(button, x, y)
 }
 func (c *Client) OnError(f func(e error)) {
@@ -107,29 +114,79 @@ func (c *Client) OnReady(f func()) {
 }
 func (c *Client) OnBitmap(f func([]Bitmap)) {
 	f1 := func(data interface{}) {
+		glog.Debug("OnBitmap: 开始处理位图数据")
 		bs := make([]Bitmap, 0, 50)
+
 		if c.tc == TC_VNC {
+			glog.Debug("OnBitmap: 处理VNC协议位图数据")
 			br := data.(*rfb.BitRect)
-			for _, v := range br.Rects {
-				b := Bitmap{int(v.Rect.X), int(v.Rect.Y), int(v.Rect.X + v.Rect.Width), int(v.Rect.Y + v.Rect.Height),
-					int(v.Rect.Width), int(v.Rect.Height),
-					Bpp(uint16(br.Pf.BitsPerPixel)), false, v.Data}
+			glog.Debugf("OnBitmap: VNC位图信息 - 像素格式: %d位, 矩形数量: %d", br.Pf.BitsPerPixel, len(br.Rects))
+
+			for i, v := range br.Rects {
+				glog.Debugf("OnBitmap: 处理VNC矩形[%d] - 位置(%d,%d) 尺寸(%dx%d) 数据长度:%d",
+					i, v.Rect.X, v.Rect.Y, v.Rect.Width, v.Rect.Height, len(v.Data))
+
+				b := Bitmap{
+					DestLeft:     int(v.Rect.X),
+					DestTop:      int(v.Rect.Y),
+					DestRight:    int(v.Rect.X + v.Rect.Width),
+					DestBottom:   int(v.Rect.Y + v.Rect.Height),
+					Width:        int(v.Rect.Width),
+					Height:       int(v.Rect.Height),
+					BitsPerPixel: Bpp(uint16(br.Pf.BitsPerPixel)),
+					IsCompress:   false, // VNC数据不压缩
+					Data:         v.Data,
+				}
 				bs = append(bs, b)
 			}
 		} else {
-			for _, v := range data.([]pdu.BitmapData) {
+			glog.Debug("OnBitmap: 处理RDP协议位图数据")
+			bitmapDataList := data.([]pdu.BitmapData)
+			glog.Debugf("OnBitmap: RDP位图数据数量: %d", len(bitmapDataList))
+
+			for i, v := range bitmapDataList {
+				glog.Debugf("OnBitmap: 处理RDP位图[%d] - 位置(%d,%d,%d,%d) 尺寸(%dx%d) BPP:%d",
+					i, v.DestLeft, v.DestTop, v.DestRight, v.DestBottom, v.Width, v.Height, v.BitsPerPixel)
+
 				IsCompress := v.IsCompress()
 				stream := v.BitmapDataStream
-				if IsCompress {
+				originalDataSize := len(stream)
+
+				glog.Debugf("OnBitmap: RDP位图[%d] - 压缩状态:%v 原始数据大小:%d", i, IsCompress, originalDataSize)
+
+				// 无论DecompressOnBackend设置如何，都需要转换为RGBA格式
+				// 如果后端解压缩，直接解压缩并转换
+				// 如果前端解压缩，也需要先转换为RGBA格式
+				if IsCompress && c.setting.DecompressOnBackend {
+					glog.Debugf("OnBitmap: 在后端解压缩RDP位图[%d]", i)
 					stream = bitmapDecompress(&v)
 					IsCompress = false
+					glog.Debugf("OnBitmap: RDP位图[%d]解压缩完成 - 解压后大小:%d", i, len(stream))
 				}
 
-				b := Bitmap{int(v.DestLeft), int(v.DestTop), int(v.DestRight), int(v.DestBottom),
-					int(v.Width), int(v.Height), Bpp(v.BitsPerPixel), IsCompress, stream}
+				// 转换为RGBA格式（无论是否压缩）
+				rgbaData := convertToRGBA(&v, stream, IsCompress)
+				if rgbaData == nil {
+					glog.Warnf("OnBitmap: RDP位图[%d]转换为RGBA失败，跳过", i)
+					continue
+				}
+
+				b := Bitmap{
+					DestLeft:     int(v.DestLeft),
+					DestTop:      int(v.DestTop),
+					DestRight:    int(v.DestRight),
+					DestBottom:   int(v.DestBottom),
+					Width:        int(v.DestRight - v.DestLeft + 1), // 使用目标显示尺寸
+					Height:       int(v.DestBottom - v.DestTop + 1),
+					BitsPerPixel: 32,    // RGBA格式固定为32位
+					IsCompress:   false, // 前端收到的总是未压缩的RGBA数据
+					Data:         rgbaData,
+				}
 				bs = append(bs, b)
 			}
 		}
+
+		glog.Debugf("OnBitmap: 位图处理完成，共处理 %d 个位图", len(bs))
 		f(bs)
 	}
 
@@ -153,22 +210,179 @@ func Bpp(bp uint16) int {
 }
 
 type Setting struct {
-	Width    int
-	Height   int
-	Protocol string
-	LogLevel glog.LEVEL
+	Width               int
+	Height              int
+	Protocol            string
+	LogLevel            glog.LEVEL
+	DecompressOnBackend bool // 控制是否在后端解压缩，false表示让前端处理
 }
 
 func NewSetting() *Setting {
 	return &Setting{
-		Width:    1024,
-		Height:   768,
-		LogLevel: glog.INFO,
+		Width:               1024,
+		Height:              768,
+		LogLevel:            glog.INFO,
+		DecompressOnBackend: false, // 默认前端解压缩
 	}
 }
+
 func (s *Setting) SetLogLevel() {
 	glog.SetLevel(s.LogLevel)
 }
 
+// SetDecompressOnBackend 设置是否在后端进行解压缩
+func (s *Setting) SetDecompressOnBackend(decompress bool) {
+	s.DecompressOnBackend = decompress
+	glog.Debugf("设置解压缩策略: 后端解压缩=%v", decompress)
+}
+
 func (s *Setting) SetRequestedProtocol(p uint32) {}
 func (s *Setting) SetClipboard(c int)            {}
+
+func bitmapDecompress(bitmap *pdu.BitmapData) []byte {
+	return core.Decompress(bitmap.BitmapDataStream, int(bitmap.Width), int(bitmap.Height), Bpp(bitmap.BitsPerPixel))
+}
+
+// convertToRGBA 将位图数据转换为RGBA格式
+func convertToRGBA(bitmap *pdu.BitmapData, data []byte, isCompressed bool) []byte {
+	// 计算目标显示尺寸
+	targetWidth := int(bitmap.DestRight - bitmap.DestLeft + 1)
+	targetHeight := int(bitmap.DestBottom - bitmap.DestTop + 1)
+
+	// 计算期望的RGBA输出大小
+	expectedRGBASize := targetWidth * targetHeight * 4
+
+	// 如果数据是压缩的，需要先解压缩
+	if isCompressed {
+		// 先解压缩为未压缩数据
+		decompressedData := core.Decompress(data, int(bitmap.Width), int(bitmap.Height), Bpp(bitmap.BitsPerPixel))
+		if len(decompressedData) == 0 {
+			return nil
+		}
+		data = decompressedData
+	}
+
+	// 验证原始数据长度
+	expectedUncompressedSize := int(bitmap.Width) * int(bitmap.Height) * int(bitmap.BitsPerPixel) / 8
+	if len(data) != expectedUncompressedSize {
+		glog.Warnf("convertToRGBA: 数据长度不匹配，期望:%d 实际:%d", expectedUncompressedSize, len(data))
+		if len(data) < expectedUncompressedSize {
+			return nil
+		}
+		// 如果数据过多，截断到正确长度
+		data = data[:expectedUncompressedSize]
+	}
+
+	// 创建RGBA输出缓冲区
+	rgbaData := make([]byte, expectedRGBASize)
+
+	// 根据位深度进行颜色转换
+	switch bitmap.BitsPerPixel {
+	case 15:
+		convert15ToRGBA(data, rgbaData, int(bitmap.Width), int(bitmap.Height))
+	case 16:
+		convert16ToRGBA(data, rgbaData, int(bitmap.Width), int(bitmap.Height))
+	case 24:
+		convert24ToRGBA(data, rgbaData, int(bitmap.Width), int(bitmap.Height))
+	case 32:
+		convert32ToRGBA(data, rgbaData, int(bitmap.Width), int(bitmap.Height))
+	default:
+		glog.Warnf("convertToRGBA: 不支持的位深度: %d", bitmap.BitsPerPixel)
+		return nil
+	}
+
+	return rgbaData
+}
+
+// 颜色转换函数
+func convert15ToRGBA(src []byte, dst []byte, width, height int) {
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			i := y*width + x
+			if i*2+1 >= len(src) || i*4+3 >= len(dst) {
+				continue
+			}
+			// RDP使用小端序，所以低字节在前
+			val := uint16(src[i*2]) | uint16(src[i*2+1])<<8
+			r := uint8((val&0x7c00)>>10) * 255 / 31
+			g := uint8((val&0x03e0)>>5) * 255 / 31
+			b := uint8(val&0x001f) * 255 / 31
+			// RGBA顺序
+			dst[i*4+0] = r
+			dst[i*4+1] = g
+			dst[i*4+2] = b
+			dst[i*4+3] = 255
+		}
+	}
+}
+
+func convert16ToRGBA(src []byte, dst []byte, width, height int) {
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			i := y*width + x
+			if i*2+1 >= len(src) || i*4+3 >= len(dst) {
+				continue
+			}
+			// RDP使用小端序，所以低字节在前
+			val := uint16(src[i*2]) | uint16(src[i*2+1])<<8
+			r := uint8((val&0xf800)>>11) * 255 / 31
+			g := uint8((val&0x07e0)>>5) * 255 / 63
+			b := uint8(val&0x001f) * 255 / 31
+			// RGBA顺序
+			dst[i*4+0] = r
+			dst[i*4+1] = g
+			dst[i*4+2] = b
+			dst[i*4+3] = 255
+		}
+	}
+}
+
+func convert24ToRGBA(src []byte, dst []byte, width, height int) {
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			i := y*width + x
+			if i*3+2 >= len(src) || i*4+3 >= len(dst) {
+				continue
+			}
+			// RDP使用BGR顺序，需要转换为RGB
+			dst[i*4+0] = src[i*3+2] // R (原BGR中的R)
+			dst[i*4+1] = src[i*3+1] // G (原BGR中的G)
+			dst[i*4+2] = src[i*3+0] // B (原BGR中的B)
+			dst[i*4+3] = 255        // A (完全不透明)
+		}
+	}
+}
+
+func convert32ToRGBA(src []byte, dst []byte, width, height int) {
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			i := y*width + x
+			if i*4+3 >= len(src) || i*4+3 >= len(dst) {
+				continue
+			}
+			// RDP使用BGRA顺序，需要转换为RGBA
+			dst[i*4+0] = src[i*4+2] // R (原BGRA中的R)
+			dst[i*4+1] = src[i*4+1] // G (原BGRA中的G)
+			dst[i*4+2] = src[i*4+0] // B (原BGRA中的B)
+			dst[i*4+3] = src[i*4+3] // A (原BGRA中的A)
+		}
+	}
+}
+
+// getMouseButtonName 将鼠标按钮数字转换为可读的名称
+func getMouseButtonName(button int) string {
+	switch button {
+	case 1:
+		return "左键"
+	case 2:
+		return "中键"
+	case 3:
+		return "右键"
+	case 4:
+		return "侧键1"
+	case 5:
+		return "侧键2"
+	default:
+		return fmt.Sprintf("未知按钮%d", button)
+	}
+}

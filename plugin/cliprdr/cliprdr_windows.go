@@ -7,10 +7,10 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/friddle/grdp/glog"
 	"github.com/shirou/w32"
-	"github.com/tomatome/grdp/glog"
 
-	"github.com/tomatome/grdp/core"
+	"github.com/friddle/grdp/core"
 
 	"github.com/tomatome/win"
 )

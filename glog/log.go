@@ -3,6 +3,7 @@ package glog
 import (
 	"fmt"
 	"log"
+	"os"
 	"sync"
 )
 
@@ -22,6 +23,36 @@ const (
 	ERROR
 	NONE
 )
+
+// InitStdout 初始化glog输出到stdout
+func InitStdout(l LEVEL) {
+	SetLevel(l)
+
+	// 创建一个配置好的logger，输出到stdout
+	logger := log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
+	SetLogger(logger)
+
+	// 输出初始化信息
+	Info("glog已配置到stdout")
+}
+
+// InitFile 初始化glog输出到文件
+func InitFile(l LEVEL, filename string) error {
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return fmt.Errorf("无法打开日志文件: %v", err)
+	}
+
+	SetLevel(l)
+
+	// 创建一个配置好的logger，输出到文件
+	logger := log.New(file, "", log.LstdFlags|log.Lshortfile)
+	SetLogger(logger)
+
+	// 输出初始化信息
+	Info("glog已配置到文件:", filename)
+	return nil
+}
 
 func SetLogger(l *log.Logger) {
 	l.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)

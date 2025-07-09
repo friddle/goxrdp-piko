@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 // dataobject.go
@@ -12,8 +13,8 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/tomatome/grdp/core"
-	"github.com/tomatome/grdp/glog"
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/glog"
 	"github.com/tomatome/win"
 )
 

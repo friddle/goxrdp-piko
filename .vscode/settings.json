@@ -1,8 +1,10 @@
 {
     "go.toolsEnvVars": {
-        "GOFLAGS": "-mod=vendor",
         "GO111MODULE": "on",
-        "GOPROXY": "https://goproxy.cn,direct"
+        "GOPROXY": "https://goproxy.cn,direct",
+        "GOROOT": "/home/friddle/sdk/go1.23.2/",
+        "GOPATH": "/home/friddle/sdk/gopath/",
+        "GOPRIVATE": "git.laiye.com"
     },
     "go.autocompleteUnimportedPackages": true,
     "go.formatTool": "goimports",

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/glog"
 	"github.com/lunixbochs/struc"
-	"github.com/tomatome/grdp/core"
-	"github.com/tomatome/grdp/glog"
 )
 
 const (
@@ -167,7 +167,6 @@ func (t FastPathUpdateType) String() string {
 
 const (
 	BITMAP_COMPRESSION = 0x0001
-	//NO_BITMAP_COMPRESSION_HDR = 0x0400
 )
 
 /* compression types */

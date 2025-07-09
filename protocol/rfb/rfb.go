@@ -13,9 +13,9 @@ import (
 
 	"github.com/lunixbochs/struc"
 
-	"github.com/tomatome/grdp/core"
-	"github.com/tomatome/grdp/emission"
-	"github.com/tomatome/grdp/glog"
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/emission"
+	"github.com/friddle/grdp/glog"
 )
 
 // ProtocolVersion

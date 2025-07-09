@@ -6,12 +6,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tomatome/grdp/glog"
+	"github.com/friddle/grdp/glog"
 
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/emission"
+	"github.com/friddle/grdp/protocol/tpkt"
 	"github.com/lunixbochs/struc"
-	"github.com/tomatome/grdp/core"
-	"github.com/tomatome/grdp/emission"
-	"github.com/tomatome/grdp/protocol/tpkt"
 )
 
 // take idea from https://github.com/Madnikulin50/gordp
@@ -249,17 +249,37 @@ func (x *X224) recvConnectionConfirm(s []byte) {
 		message := &ServerConnectionConfirm{}
 		if err := struc.Unpack(bytes.NewReader(s), message); err != nil {
 			glog.Error("ReadServerConnectionConfirm err", err)
+			x.Emit("error", err)
 			return
 		}
 		glog.Debugf("message: %+v", *message.ProtocolNeg)
 		if message.ProtocolNeg.Type == TYPE_RDP_NEG_FAILURE {
+			failureCode := message.ProtocolNeg.Result
 			glog.Error(fmt.Sprintf("NODE_RDP_PROTOCOL_X224_NEG_FAILURE with code: %d,see https://msdn.microsoft.com/en-us/library/cc240507.aspx",
-				message.ProtocolNeg.Result))
-			//only use Standard RDP Security mechanisms
-			if message.ProtocolNeg.Result == 2 {
-				glog.Info("Only use Standard RDP Security mechanisms, Reconnect with Standard RDP")
+				failureCode))
+
+			// 根据失败代码提供更详细的错误信息
+			var errorMsg string
+			switch failureCode {
+			case SSL_REQUIRED_BY_SERVER:
+				errorMsg = "服务器要求客户端支持增强的RDP安全性（TLS或CredSSP）"
+			case SSL_NOT_ALLOWED_BY_SERVER:
+				errorMsg = "服务器仅支持标准RDP安全机制"
+			case SSL_CERT_NOT_ON_SERVER:
+				errorMsg = "服务器没有有效的身份验证证书"
+			case INCONSISTENT_FLAGS:
+				errorMsg = "请求的安全协议与当前安全协议不一致"
+			case HYBRID_REQUIRED_BY_SERVER:
+				errorMsg = "服务器要求客户端支持增强的RDP安全性（CredSSP）"
+			case SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER:
+				errorMsg = "服务器要求客户端支持TLS和基于证书的客户端身份验证"
+			default:
+				errorMsg = fmt.Sprintf("未知的协议协商失败代码: %d", failureCode)
 			}
+
+			glog.Info("协议协商失败详情:", errorMsg)
 			x.Close()
+			x.Emit("error", fmt.Errorf("protocol negotiation failed: %s (code: %d)", errorMsg, failureCode))
 			return
 		}
 
@@ -273,6 +293,7 @@ func (x *X224) recvConnectionConfirm(s []byte) {
 
 	if x.selectedProtocol == PROTOCOL_HYBRID_EX {
 		glog.Error("NODE_RDP_PROTOCOL_HYBRID_EX_NOT_SUPPORTED")
+		x.Emit("error", fmt.Errorf("HYBRID_EX protocol not supported"))
 		return
 	}
 
@@ -289,6 +310,7 @@ func (x *X224) recvConnectionConfirm(s []byte) {
 		err := x.transport.(*tpkt.TPKT).StartTLS()
 		if err != nil {
 			glog.Error("start tls failed:", err)
+			x.Emit("error", fmt.Errorf("TLS start failed: %v", err))
 			return
 		}
 		x.Emit("connect", x.selectedProtocol)
@@ -300,6 +322,7 @@ func (x *X224) recvConnectionConfirm(s []byte) {
 		err := x.transport.(*tpkt.TPKT).StartNLA()
 		if err != nil {
 			glog.Error("start NLA failed:", err)
+			x.Emit("error", fmt.Errorf("NLA start failed: %v", err))
 			return
 		}
 		x.Emit("connect", x.selectedProtocol)

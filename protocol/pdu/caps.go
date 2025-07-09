@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/tomatome/grdp/glog"
+	"github.com/friddle/grdp/glog"
 
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/protocol/t125/gcc"
 	"github.com/lunixbochs/struc"
-	"github.com/tomatome/grdp/core"
-	"github.com/tomatome/grdp/protocol/t125/gcc"
 )
 
 type CapsType uint16

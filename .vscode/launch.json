@@ -3,5 +3,34 @@
     // 悬停以查看现有属性的描述。
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": []
+    "configurations": [
+        {
+            "name": "Launch Go Program",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "env": {
+                "GOPROXY": "https://goproxy.cn,direct",
+                "GOROOT": "/home/friddle/sdk/go1.23.2/",
+                "GOPATH": "/home/friddle/sdk/gopath/",
+                "GOMODCACHE": "/home/friddle/sdk/gopath/pkg/mod",
+                "GOCACHE": "/home/friddle/.cache/go-build",
+                "GOPRIVATE": "git.laiye.com",
+                "PIKO_NAME": "goxrdp-test",
+                "PIKO_REMOTE": "http://piko-upstream.inner-service.laiye.com:8089",
+                "XRDP_HOST": "192.168.16.34",
+                "XRDP_USER": "friddle",
+                "XRDP_PASS": "88636311",
+                "PIKO_AUTO_EXIT": "true"
+            },
+            "args": [
+                "--name=goxrdp-test",
+                "--remote=http://piko-upstream.inner-service.laiye.com:8089",
+                "--xrdp-host=192.168.16.34",
+                "--xrdp-user=friddle",
+                "--xrdp-pass=88636311"
+            ]
+        }
+    ]
 }

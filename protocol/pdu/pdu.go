@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/hex"
 
-	"github.com/tomatome/grdp/core"
-	"github.com/tomatome/grdp/emission"
-	"github.com/tomatome/grdp/glog"
-	"github.com/tomatome/grdp/protocol/t125/gcc"
+	"github.com/friddle/grdp/core"
+	"github.com/friddle/grdp/emission"
+	"github.com/friddle/grdp/glog"
+	"github.com/friddle/grdp/protocol/t125/gcc"
 )
 
 type PDULayer struct {
@@ -194,7 +194,7 @@ func (c *Client) sendConfirmActivePDU() {
 	generalCapa.SuppressOutputSupport = 0
 
 	bitmapCapa := c.clientCapabilities[CAPSTYPE_BITMAP].(*BitmapCapability)
-	bitmapCapa.PreferredBitsPerPixel = c.clientCoreData.HighColorDepth
+	bitmapCapa.PreferredBitsPerPixel = 8
 	bitmapCapa.DesktopWidth = c.clientCoreData.DesktopWidth
 	bitmapCapa.DesktopHeight = c.clientCoreData.DesktopHeight
 	bitmapCapa.DesktopResizeFlag = 0x0001
