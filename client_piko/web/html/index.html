@@ -263,21 +263,16 @@
         // 获取当前页面的WebSocket URL
         var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
-        // 从当前路径中提取前缀
-        var pathParts = window.location.pathname.split('/');
-        var wsUrl;
+        // 使用 window.location.href 获取完整URL，然后构建WebSocket URL
+        var currentUrl = window.location.href;
+        var urlObj = new URL(currentUrl);
+        var wsUrl = protocol + "//" + urlObj.host + urlObj.pathname + "ws";
         
-        if (pathParts.length > 1 && pathParts[1] !== '') {
-            // 有前缀，使用前缀+ws
-            wsUrl = protocol + "//" + window.location.host + "/" + pathParts[1] + "/ws";
-        } else {
-            // 没有前缀，直接使用/ws
-            wsUrl = protocol + "//" + window.location.host + "/ws";
-        }
-        
+        console.log('[index.html] 当前页面URL:', currentUrl);
         console.log('[index.html] 连接WebSocket:', wsUrl);
         
         ws = new WebSocket(wsUrl);
+        window.ws = ws;
         
         ws.onopen = function() {
             console.log('[index.html] WebSocket连接已建立');

@@ -187,27 +187,11 @@ func (ws *WebServer) Start(ctx context.Context) error {
 	api.HandleFunc("/rdp-reconnect", ws.handleRDPReconnect).Methods("POST")
 	api.HandleFunc("/flush", ws.handleFlush).Methods("POST")
 
-	// 根路径的API路由
-	rootApi := router.PathPrefix("/api").Subrouter()
-	rootApi.HandleFunc("/status", ws.handleStatus).Methods("GET")
-	rootApi.HandleFunc("/connect", ws.handleConnect).Methods("POST")
-	rootApi.HandleFunc("/disconnect", ws.handleDisconnect).Methods("POST")
-	rootApi.HandleFunc("/system-info", ws.handleSystemInfo).Methods("GET")
-	rootApi.HandleFunc("/rdp-info", ws.handleRDPInfo).Methods("GET")
-	rootApi.HandleFunc("/rdp-screen", ws.handleRDPScreen).Methods("GET")
-	rootApi.HandleFunc("/test-connection", ws.handleTestConnection).Methods("POST")
-	rootApi.HandleFunc("/simple-connect", ws.handleSimpleConnect).Methods("POST")
-	rootApi.HandleFunc("/rdp-status", ws.handleRDPStatus).Methods("GET")
-	rootApi.HandleFunc("/rdp-reconnect", ws.handleRDPReconnect).Methods("POST")
-	rootApi.HandleFunc("/flush", ws.handleFlush).Methods("POST")
-
 	// WebSocket连接处理
-	router.HandleFunc(staticPrefix+"/ws", ws.handleWebSocket)
-	router.HandleFunc("/ws", ws.handleWebSocket) // 也支持根路径的WebSocket连接
+	router.HandleFunc(staticPrefix+"/html/ws", ws.handleWebSocket)
 
 	// 默认页面 - 渲染index.html，不跳转（放在静态文件路由之前）
-	router.HandleFunc("/", ws.handleIndexPage)
-	router.HandleFunc(staticPrefix, ws.handleIndexPage)
+	router.HandleFunc(staticPrefix+"/", ws.handleIndexPage)
 
 	// 根路径的静态文件路由（如果没有前缀，放在带前缀的静态文件路由之前）
 	if ws.config.Name == "" {
@@ -589,6 +573,14 @@ func (ws *WebServer) handleMouseMessage(conn *websocket.Conn, msg map[string]int
 	button, _ := data[2].(float64)
 	pressed, _ := data[3].(bool)
 
+	// 添加详细的调试日志
+	ws.logger.Info("收到鼠标事件",
+		zap.Float64("x", x),
+		zap.Float64("y", y),
+		zap.Float64("button", button),
+		zap.Bool("pressed", pressed),
+		zap.String("buttonName", getButtonName(int(button))))
+
 	// 判断事件类型
 	if button == 0 && !pressed {
 		// 鼠标移动事件
@@ -598,13 +590,27 @@ func (ws *WebServer) handleMouseMessage(conn *websocket.Conn, msg map[string]int
 			zap.Int("y", int(y)))
 	} else {
 		// 鼠标按键事件
+		ws.logger.Info("转发鼠标按键事件到RDP客户端",
+			zap.Int("x", int(x)),
+			zap.Int("y", int(y)),
+			zap.Int("button", int(button)),
+			zap.Bool("pressed", pressed),
+			zap.String("buttonName", getButtonName(int(button))))
 		rdpClient.SendMouseEvent(int(x), int(y), int(button), pressed)
-		/*ws.logger.Debug("转发鼠标按键事件到RDP客户端",
-		zap.Int("x", int(x)),
-		zap.Int("y", int(y)),
-		zap.Int("button", int(button)),
-		zap.Bool("pressed", pressed))
-		*/
+	}
+}
+
+// getButtonName 获取按钮名称用于调试
+func getButtonName(button int) string {
+	switch button {
+	case 0:
+		return "左键"
+	case 1:
+		return "中键"
+	case 2:
+		return "右键"
+	default:
+		return fmt.Sprintf("未知按钮%d", button)
 	}
 }
 

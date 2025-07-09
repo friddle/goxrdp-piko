@@ -23,14 +23,10 @@
 	 * @param button {integer} client button number
 	 */
 	function mouseButtonMap(button) {
-		switch(button) {
-		case 0:
-			return 1;
-		case 2:
-			return 2;
-		default:
-			return 0;
-		}
+		// 修复：直接返回原始按钮编号，让后端处理映射
+		// 浏览器按钮编号：0=左键，1=中键，2=右键
+		// RDP协议按钮编号：0=左键，1=中键，2=右键
+		return button;
 	};
 	
 	function getCanvasRelativePosition(e, canvas) {
@@ -76,9 +72,16 @@
 			this.canvas.addEventListener('mousedown', function (e) {
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) return;
 				var pos = getCanvasRelativePosition(e, self.canvas);
+				var mappedButton = mouseButtonMap(e.button);
+				console.log('[client.js] 鼠标按下事件:', {
+					originalButton: e.button,
+					mappedButton: mappedButton,
+					position: pos,
+					activeSession: self.activeSession
+				});
 				var mouseEvent = {
 					event: 'mouse',
-					data: [Math.round(pos.x), Math.round(pos.y), mouseButtonMap(e.button), true]
+					data: [Math.round(pos.x), Math.round(pos.y), mappedButton, true]
 				};
 				self.socket.send(JSON.stringify(mouseEvent));
 				e.preventDefault();
@@ -87,9 +90,16 @@
 			this.canvas.addEventListener('mouseup', function (e) {
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) return;
 				var pos = getCanvasRelativePosition(e, self.canvas);
+				var mappedButton = mouseButtonMap(e.button);
+				console.log('[client.js] 鼠标释放事件:', {
+					originalButton: e.button,
+					mappedButton: mappedButton,
+					position: pos,
+					activeSession: self.activeSession
+				});
 				var mouseEvent = {
 					event: 'mouse',
-					data: [Math.round(pos.x), Math.round(pos.y), mouseButtonMap(e.button), false]
+					data: [Math.round(pos.x), Math.round(pos.y), mappedButton, false]
 				};
 				self.socket.send(JSON.stringify(mouseEvent));
 				e.preventDefault();

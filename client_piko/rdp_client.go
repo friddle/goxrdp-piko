@@ -716,15 +716,26 @@ func (c *RdpClient) MouseUp(button int, x, y int) {
 
 	p := &pdu.PointerEvent{}
 
+	// 添加调试日志
+	glog.Info("MouseUp事件",
+		zap.Int("button", button),
+		zap.Int("x", x),
+		zap.Int("y", y),
+		zap.String("buttonName", getMouseButtonName(button)))
+
 	switch button {
 	case 0:
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON1
+		glog.Info("设置PTRFLAGS_BUTTON1 (左键)")
 	case 2:
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
+		glog.Info("设置PTRFLAGS_BUTTON2 (右键)")
 	case 1:
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON3
+		glog.Info("设置PTRFLAGS_BUTTON3 (中键)")
 	default:
 		p.PointerFlags |= pdu.PTRFLAGS_MOVE
+		glog.Warn("未知按钮，设置为移动事件")
 	}
 
 	p.XPos = uint16(x)
@@ -742,15 +753,26 @@ func (c *RdpClient) MouseDown(button int, x, y int) {
 
 	p.PointerFlags |= pdu.PTRFLAGS_DOWN
 
+	// 添加调试日志
+	glog.Info("MouseDown事件",
+		zap.Int("button", button),
+		zap.Int("x", x),
+		zap.Int("y", y),
+		zap.String("buttonName", getMouseButtonName(button)))
+
 	switch button {
 	case 0:
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON1
+		glog.Info("设置PTRFLAGS_BUTTON1 (左键)")
 	case 2:
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
+		glog.Info("设置PTRFLAGS_BUTTON2 (右键)")
 	case 1:
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON3
+		glog.Info("设置PTRFLAGS_BUTTON3 (中键)")
 	default:
 		p.PointerFlags |= pdu.PTRFLAGS_MOVE
+		glog.Warn("未知按钮，设置为移动事件")
 	}
 
 	p.XPos = uint16(x)
@@ -1217,4 +1239,18 @@ func (c *RdpClient) SendABCD() error {
 
 	glog.Info("ABCD键盘输入发送完成")
 	return nil
+}
+
+// getMouseButtonName 获取鼠标按钮名称用于调试
+func getMouseButtonName(button int) string {
+	switch button {
+	case 0:
+		return "左键"
+	case 1:
+		return "中键"
+	case 2:
+		return "右键"
+	default:
+		return fmt.Sprintf("未知按钮%d", button)
+	}
 }
