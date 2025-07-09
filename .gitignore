@@ -1,3 +1,4 @@
 .idea/
 .vscode/
 run_local.sh
+dist/
