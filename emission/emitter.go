@@ -269,5 +269,12 @@ func NewEmitter() (emitter *Emitter) {
 	emitter.events = make(map[interface{}][]reflect.Value)
 	emitter.maxListeners = DefaultMaxListeners
 	emitter.onces = make(map[interface{}][]reflect.Value)
+
+	// 设置默认的恢复处理器
+	emitter.recoverer = func(event, listener interface{}, err error) {
+		// 记录panic信息但不让程序崩溃
+		fmt.Printf("Emitter panic recovered: event=%v, listener=%v, error=%v\n", event, listener, err)
+	}
+
 	return
 }

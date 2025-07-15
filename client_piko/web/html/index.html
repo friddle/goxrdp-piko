@@ -28,14 +28,10 @@
     
     // 等待模块加载完成
     function waitForModulesAndLoad() {
-        console.log('[index.html] 等待模块加载...');
-        
         // 检查必要的模块是否已加载
         if (typeof Mstsc !== 'undefined' && typeof Mstsc.$ !== 'undefined') {
-            console.log('[index.html] 模块加载完成，初始化页面');
             initializePage();
         } else {
-            console.log('[index.html] 模块未加载完成，等待...');
             setTimeout(waitForModulesAndLoad, 100);
         }
     }
@@ -44,63 +40,55 @@
     function refreshCanvasSize() {
         var canvas = Mstsc.$("myCanvas");
         if (!canvas) {
-            console.error('[index.html] Canvas元素不存在');
             return;
         }
         
         // 确保canvas可见
         if (canvas.style.display === 'none') {
-            console.log('[index.html] Canvas不可见，强制显示');
             canvas.style.display = 'inline';
         }
         
+        // 获取窗口尺寸
         var canvasWidth = window.innerWidth;
         var canvasHeight = window.innerHeight;
-        
-        console.log('[index.html] 强制刷新canvas尺寸:', {
-            newWidth: canvasWidth,
-            newHeight: canvasHeight,
-            oldWidth: canvas.width,
-            oldHeight: canvas.height
-        });
         
         // 设置canvas的CSS尺寸
         canvas.style.width = canvasWidth + 'px';
         canvas.style.height = canvasHeight + 'px';
         
-        // 设置canvas的实际尺寸（像素）
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        
-        // 验证设置结果
-        var rect = canvas.getBoundingClientRect();
-        console.log('[index.html] Canvas尺寸刷新完成:', {
-            finalWidth: canvas.width,
-            finalHeight: canvas.height,
-            boundingRect: {
-                width: rect.width,
-                height: rect.height
+        // 等待CSS应用后再设置像素尺寸
+        setTimeout(function() {
+            // 重新获取显示尺寸（CSS应用后）
+            var displayWidth = canvas.clientWidth || canvas.offsetWidth || canvasWidth;
+            var displayHeight = canvas.clientHeight || canvas.offsetHeight || canvasHeight;
+            
+            // 设置canvas的实际像素尺寸
+            canvas.width = displayWidth;
+            canvas.height = displayHeight;
+            
+            console.log('[index.html] Canvas尺寸已设置:', {
+                cssWidth: canvas.style.width,
+                cssHeight: canvas.style.height,
+                pixelWidth: canvas.width,
+                pixelHeight: canvas.height,
+                displayWidth: displayWidth,
+                displayHeight: displayHeight
+            });
+            
+            // 验证设置结果
+            var rect = canvas.getBoundingClientRect();
+            if (canvas.width <= 0 || canvas.height <= 0) {
+                console.error('[index.html] Canvas尺寸设置失败');
+                return;
             }
-        });
-        
-        // 如果尺寸设置失败，尝试重新设置
-        if (canvas.width <= 0 || canvas.height <= 0) {
-            console.error('[index.html] Canvas尺寸设置失败，尝试重新设置');
-            setTimeout(function() {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-                console.log('[index.html] 重新设置后的尺寸:', canvas.width, 'x', canvas.height);
-            }, 100);
-        }
-        
-        // 触发RDP界面刷新
-        triggerRDPFlush();
+            
+            // 触发RDP界面刷新
+            triggerRDPFlush();
+        }, 50);
     }
     
     // 触发RDP界面刷新的函数
     function triggerRDPFlush() {
-        console.log('[index.html] 触发RDP界面刷新');
-        
         // 方法1: 通过WebSocket发送flush消息
         if (ws && ws.readyState === WebSocket.OPEN) {
             var message = {
@@ -111,7 +99,6 @@
                 }
             };
             ws.send(JSON.stringify(message));
-            console.log('[index.html] 已发送WebSocket flush消息');
         }
         
         // 方法2: 通过HTTP API发送flush请求
@@ -127,24 +114,17 @@
         })
         .then(response => response.json())
         .then(data => {
-            console.log('[index.html] HTTP flush响应:', data);
+            // HTTP flush响应处理
         })
         .catch(error => {
-            console.error('[index.html] HTTP flush请求失败:', error);
+            // HTTP flush请求失败处理
         });
     }
     
     // 初始化页面
     function initializePage() {
-        console.log('[index.html] 初始化页面...');
-        
         // 添加窗口大小变化监听器
         window.addEventListener('resize', function() {
-            console.log('[index.html] 窗口大小变化:', {
-                newWidth: window.innerWidth,
-                newHeight: window.innerHeight
-            });
-            
             // 使用防抖，避免频繁调用
             clearTimeout(window.resizeTimeout);
             window.resizeTimeout = setTimeout(function() {
@@ -155,56 +135,31 @@
         // 初始化client - 添加延迟确保DOM完全加载
         setTimeout(function() {
             var canvas = Mstsc.$("myCanvas");
-            console.log('[index.html] 检查canvas元素:', {
-                canvas: canvas,
-                canvasId: canvas ? canvas.id : 'null',
-                canvasType: canvas ? canvas.constructor.name : 'null'
-            });
             
             if (canvas) {
-                console.log('[index.html] 开始初始化client...');
                 load(canvas);
             } else {
-                console.error('[index.html] 无法找到canvas元素，尝试使用document.getElementById');
                 var canvasById = document.getElementById("myCanvas");
-                console.log('[index.html] document.getElementById结果:', {
-                    canvasById: canvasById,
-                    canvasByIdId: canvasById ? canvasById.id : 'null'
-                });
                 
                 if (canvasById) {
-                    console.log('[index.html] 使用document.getElementById找到canvas，开始初始化client...');
                     load(canvasById);
-                } else {
-                    console.error('[index.html] 仍然无法找到canvas元素');
                 }
             }
         }, 100);
-        
-        console.log('[index.html] 页面初始化完成');
     }
     
     function load (canvas) {
     	// 验证canvas参数
     	if (!canvas) {
-    		console.error('[index.html] Canvas参数为null或undefined');
     		return;
     	}
     	
     	if (!canvas.getContext) {
-    		console.error('[index.html] Canvas元素无效，缺少getContext方法');
     		return;
     	}
     	
-    	console.log('[index.html] Canvas验证通过:', {
-    		canvasId: canvas.id,
-    		canvasType: canvas.constructor.name,
-    		hasGetContext: typeof canvas.getContext === 'function'
-    	});
-    	
     	// 等待Module初始化完成
     	if (typeof Module === 'undefined') {
-    		console.log('[index.html] Module is undefined, waiting...');
     		setTimeout(function() {
     			load(canvas);
     		}, 100);
@@ -212,7 +167,6 @@
     	}
     	
     	if (!Module.HEAPU8) {
-    		console.log('[index.html] Module.HEAPU8 not ready, waiting...');
     		setTimeout(function() {
     			load(canvas);
     		}, 100);
@@ -221,7 +175,6 @@
     	
     	// 检查内存管理函数
     	if (typeof Module._malloc !== 'function' || typeof Module._free !== 'function') {
-    		console.log('[index.html] Module memory functions not ready, waiting...');
     		setTimeout(function() {
     			load(canvas);
     		}, 100);
@@ -230,7 +183,22 @@
     	
     	// 检查ccall函数
     	if (typeof Module.ccall !== 'function') {
-    		console.log('[index.html] Module.ccall not ready, waiting...');
+    		setTimeout(function() {
+    			load(canvas);
+    		}, 100);
+    		return;
+    	}
+    	
+    	// 检查Mstsc.client是否存在
+    	if (typeof Mstsc === 'undefined' || typeof Mstsc.client === 'undefined') {
+    		setTimeout(function() {
+    			load(canvas);
+    		}, 100);
+    		return;
+    	}
+    	
+    	// 检查Mstsc.Canvas是否存在
+    	if (typeof Mstsc.Canvas === 'undefined') {
     		setTimeout(function() {
     			load(canvas);
     		}, 100);
@@ -239,18 +207,9 @@
     	
     	// 检查解压缩函数 - 使用不带下划线前缀的函数名（用于ccall调用）
     	var decompressFunctions = ['bitmap_decompress_15', 'bitmap_decompress_16', 'bitmap_decompress_24', 'bitmap_decompress_32'];
-    	console.log('[index.html] Decompress functions to check:', decompressFunctions);
     	
     	// 由于ccall函数存在，我们假设解压缩函数也可以通过ccall调用
     	// 实际的函数存在性检查将在运行时进行
-    	console.log('[index.html] Assuming decompress functions are available via ccall');
-    	
-    	console.log('[index.html] Module initialized successfully, creating client...');
-    	console.log('[index.html] Module.HEAPU8 available:', !!Module.HEAPU8);
-    	console.log('[index.html] Module._malloc available:', typeof Module._malloc === 'function');
-    	console.log('[index.html] Module._free available:', typeof Module._free === 'function');
-    	console.log('[index.html] Module.ccall available:', typeof Module.ccall === 'function');
-    	console.log('[index.html] Decompress functions will be called via ccall');
     	
     	client = Mstsc.client.create(canvas);
     	
@@ -268,20 +227,15 @@
         var urlObj = new URL(currentUrl);
         var wsUrl = protocol + "//" + urlObj.host + urlObj.pathname + "ws";
         
-        console.log('[index.html] 当前页面URL:', currentUrl);
-        console.log('[index.html] 连接WebSocket:', wsUrl);
-        
         ws = new WebSocket(wsUrl);
         window.ws = ws;
         
         ws.onopen = function() {
-            console.log('[index.html] WebSocket连接已建立');
             // 连接建立后检查RDP状态
             checkRDPStatus();
             
             // 如果是重连，触发RDP界面刷新
             if (window.wsReconnected) {
-                console.log('[index.html] WebSocket重连成功，触发RDP界面刷新');
                 setTimeout(function() {
                     triggerRDPFlush();
                 }, 1000); // 等待1秒后执行刷新
@@ -292,7 +246,6 @@
         ws.onmessage = function(event) {
             try {
                 var message = JSON.parse(event.data);
-                console.log('[index.html] 收到WebSocket消息:', message);
                 
                 if (message.event === 'status') {
                     handleStatusUpdate(message.data);
@@ -302,9 +255,11 @@
                     handleRDPError(message.data);
                 } else if (message.event === 'rdp-close') {
                     handleRDPClose();
+                } else if (message.event === 'connection_rejected') {
+                    // 处理WebSocket连接被拒绝的情况
+                    handleConnectionRejected(message.data);
                 } else if (message.event === 'rdp-bitmap') {
                     // 将 rdp-bitmap 事件转发给 client.js 处理
-                    console.log('[index.html] 转发 rdp-bitmap 事件给 client.js');
                     if (client && typeof client.handleBitmapMessage === 'function') {
                         // 调用 client.js 的专用处理方法
                         client.handleBitmapMessage(message);
@@ -313,23 +268,29 @@
                         try {
                             client.socket.onmessage(event);
                         } catch (e) {
-                            console.error('[index.html] 调用 client.js 消息处理器失败:', e);
+                            // 调用 client.js 消息处理器失败
                         }
-                    } else {
-                        console.warn('[index.html] client.js 未准备好处理 rdp-bitmap 事件');
                     }
                 }
             } catch (e) {
-                console.error('[index.html] 解析WebSocket消息失败:', e);
+                // 解析WebSocket消息失败
             }
         };
         
         ws.onerror = function(error) {
-            console.error('[index.html] WebSocket错误:', error);
+            // 显示WebSocket连接错误
+            showConnectionError('WebSocket连接错误，请检查网络连接');
         };
         
-        ws.onclose = function() {
-            console.log('[index.html] WebSocket连接已关闭');
+        ws.onclose = function(event) {
+            // 检查是否是连接被拒绝导致的关闭
+            if (event.code === 1000 && event.reason === '') {
+                // 正常关闭，可能是连接被拒绝后服务器主动关闭
+            } else {
+                // 显示连接关闭信息
+                showConnectionError('WebSocket连接已关闭，正在尝试重新连接...');
+            }
+            
             // 设置重连标志
             window.wsReconnected = true;
             // 尝试重新连接
@@ -344,10 +305,8 @@
         fetch('./api/rdp-status')
             .then(response => response.json())
             .then(data => {
-                console.log('[index.html] RDP状态:', data);
                 if (data.connected) {
                     // 如果RDP已连接，直接跳转到画布界面
-                    console.log('[index.html] RDP已连接，直接跳转到画布界面');
                     showReusedConnectionMessage('检测到现有RDP连接，正在跳转...');
                     setTimeout(function() {
                         switchToCanvas();
@@ -358,7 +317,6 @@
                 }
             })
             .catch(error => {
-                console.error('[index.html] 检查RDP状态失败:', error);
                 // 即使状态检查失败，也尝试自动连接
                 checkAutoConnect();
             });
@@ -374,27 +332,21 @@
         fetch('./api/rdp-info')
             .then(response => response.json())
             .then(data => {
-                console.log('[index.html] RDP配置信息:', data);
-                
                 // 检查是否有足够的信息进行自动连接
                 if (data.host && data.user) {
-                    console.log('[index.html] 检测到RDP配置，尝试自动连接');
                     autoConnectAttempted = true;
                     autoConnectToRDP();
                 } else {
-                    console.log('[index.html] 没有足够的RDP配置信息，显示登录界面');
                     showLoginForm('', '', '');
                 }
             })
             .catch(error => {
-                console.error('[index.html] 获取RDP配置信息失败:', error);
+                // 获取RDP配置信息失败
             });
     }
     
     // 自动连接到RDP
     function autoConnectToRDP() {
-        console.log('[index.html] 开始自动连接RDP');
-        
         // 获取配置信息
         fetch('./api/rdp-info')
             .then(response => response.json())
@@ -405,7 +357,6 @@
                 
                 // 检查是否有足够的信息进行自动连接
                 if (!host || !user) {
-                    console.log('[index.html] 缺少主机或用户名信息，显示登录界面');
                     showLoginForm(host, user, domain);
                     return;
                 }
@@ -417,7 +368,6 @@
                         var hasPassword = statusData.config && statusData.config.xrdpPass && statusData.config.xrdpPass !== '';
                         
                         if (!hasPassword) {
-                            console.log('[index.html] 没有配置密码，显示登录界面让用户输入');
                             showLoginForm(host, user, domain);
                             return;
                         }
@@ -442,7 +392,6 @@
                         })
                         .then(response => response.json())
                         .then(result => {
-                            console.log('[index.html] 连接请求结果:', result);
                             if (result.success) {
                                 if (result.reused) {
                                     // 复用现有连接
@@ -455,33 +404,29 @@
                                     showReusedConnectionMessage('正在建立RDP连接...');
                                 }
                             } else {
-                                console.error('[index.html] 连接失败:', result.error);
                                 showReusedConnectionMessage('连接失败: ' + result.error);
                                 // 连接失败时显示登录界面
                                 showLoginForm(host, user, domain);
                             }
                         })
                         .catch(error => {
-                            console.error('[index.html] 发送连接请求失败:', error);
                             showReusedConnectionMessage('连接请求失败');
                             // 请求失败时显示登录界面
                             showLoginForm(host, user, domain);
                         });
                     })
                     .catch(error => {
-                        console.error('[index.html] 获取RDP状态失败:', error);
                         // 状态获取失败时显示登录界面
                         showLoginForm(host, user, domain);
                     });
             })
             .catch(error => {
-                console.error('[index.html] 获取RDP配置失败:', error);
+                // 获取RDP配置失败
             });
     }
     
     // 处理状态更新
     function handleStatusUpdate(status) {
-        console.log('[index.html] 状态更新:', status);
         if (status.rdp === 'connected') {
             // RDP已连接，跳转到画布界面
             setTimeout(function() {
@@ -492,7 +437,6 @@
     
     // 处理RDP连接成功
     function handleRDPConnect(data) {
-        console.log('[index.html] RDP连接成功:', data);
         if (data.reused) {
             showReusedConnectionMessage('复用现有RDP连接');
         } else {
@@ -505,7 +449,6 @@
     
     // 处理RDP错误
     function handleRDPError(data) {
-        console.error('[index.html] RDP连接错误:', data);
         showReusedConnectionMessage('RDP连接错误: ' + data.message);
         // 显示登录界面
         showLoginForm('', '', '');
@@ -513,113 +456,80 @@
     
     // 处理RDP连接关闭
     function handleRDPClose() {
-        console.log('[index.html] RDP连接已关闭');
         showReusedConnectionMessage('RDP连接已关闭');
         // 显示登录界面
         showLoginForm('', '', '');
     }
     
-    // 切换到画布界面
+    // 处理WebSocket连接被拒绝
+    function handleConnectionRejected(data) {
+        // 构建详细的错误信息
+        var errorMessage = 'WebSocket连接被拒绝: ' + (data.message || data.error || '未知原因');
+        
+        // 如果有详细信息，添加到错误消息中
+        if (data.details) {
+            errorMessage += '<br><br><strong>详细信息:</strong><br>';
+            if (data.details.existingClient) {
+                errorMessage += '现有客户端: ' + data.details.existingClient + '<br>';
+            }
+            if (data.details.newClient) {
+                errorMessage += '新客户端: ' + data.details.newClient + '<br>';
+            }
+            if (data.details.timestamp) {
+                var date = new Date(data.details.timestamp * 1000);
+                errorMessage += '时间: ' + date.toLocaleString() + '<br>';
+            }
+        }
+        
+        // 显示错误信息
+        showConnectionError(errorMessage);
+        
+        // 显示登录界面
+        showLoginForm('', '', '');
+    }
+    
+    // 切换到canvas界面
     function switchToCanvas() {
-        console.log('=== [index.html] 开始切换到画布界面 ===');
-        console.log('[index.html] 当前页面状态:', {
-            mainDisplay: Mstsc.$("main").style.display,
-            canvasDisplay: Mstsc.$("myCanvas").style.display,
-            windowWidth: window.innerWidth,
-            windowHeight: window.innerHeight
-        });
-        
+        // 隐藏登录界面
         Mstsc.$("main").style.display = 'none';
-        console.log('[index.html] 隐藏登录界面完成');
         
+        // 显示canvas
         var canvas = Mstsc.$("myCanvas");
-        console.log('[index.html] 获取canvas元素:', {
-            canvasId: canvas.id,
-            currentWidth: canvas.width,
-            currentHeight: canvas.height,
-            currentDisplay: canvas.style.display
-        });
-        
-        // 强制显示canvas
         canvas.style.display = 'inline';
-        console.log('[index.html] 显示canvas完成');
         
         // 强制刷新canvas尺寸
         refreshCanvasSize();
         
-        // 修复：确保canvas尺寸设置正确
-        var canvasWidth = window.innerWidth;
-        var canvasHeight = window.innerHeight;
-        
-        console.log('[index.html] 计算canvas尺寸:', {
-            windowWidth: window.innerWidth,
-            windowHeight: window.innerHeight,
-            calculatedWidth: canvasWidth,
-            calculatedHeight: canvasHeight
-        });
-        
-        // 设置canvas的CSS尺寸
-        canvas.style.width = canvasWidth + 'px';
-        canvas.style.height = canvasHeight + 'px';
-        
-        // 设置canvas的实际尺寸（像素）
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        
-        // 验证canvas尺寸设置
-        var rect = canvas.getBoundingClientRect();
-        console.log('[index.html] 设置canvas尺寸完成:', {
-            newWidth: canvas.width,
-            newHeight: canvas.height,
-            cssWidth: canvas.style.width,
-            cssHeight: canvas.style.height,
-            finalDisplay: canvas.style.display,
-            boundingRect: {
-                width: rect.width,
-                height: rect.height
-            },
-            windowSize: {
-                width: window.innerWidth,
-                height: window.innerHeight
+        // 等待canvas尺寸设置完成
+        setTimeout(function() {
+            // 验证canvas尺寸
+            if (canvas.width <= 0 || canvas.height <= 0) {
+                console.error('[index.html] Canvas尺寸无效，无法切换到canvas界面');
+                Mstsc.$("main").style.display = 'inline';
+                Mstsc.$("myCanvas").style.display = 'none';
+                return;
             }
-        });
-        
-        // 验证canvas是否可见且尺寸正确
-        if (canvas.width <= 0 || canvas.height <= 0) {
-            console.error('[index.html] Canvas尺寸设置失败！');
-            console.error('[index.html] Canvas尺寸:', canvas.width, 'x', canvas.height);
-            return;
-        }
-        
-        if (rect.width <= 0 || rect.height <= 0) {
-            console.error('[index.html] Canvas边界矩形无效！');
-            console.error('[index.html] 边界矩形:', rect.width, 'x', rect.height);
-            return;
-        }
-        
-        // 确保canvas可见
-        if (canvas.style.display === 'none') {
-            console.error('[index.html] Canvas仍然不可见，强制显示');
-            canvas.style.display = 'inline';
-        }
-        
-        // 请求重新获取首次页面位图
-        console.log('[index.html] 准备请求初始位图...');
-        requestInitialBitmap();
-        
-        console.log('=== [index.html] 画布界面切换完成 ===');
+            
+            console.log('[index.html] 已切换到canvas界面，尺寸:', canvas.width, 'x', canvas.height);
+            
+            // 请求初始位图
+            requestInitialBitmap();
+        }, 100);
     }
     
-    // 请求重新获取首次页面位图
+    // 请求初始位图数据
     function requestInitialBitmap() {
-        console.log('[index.html] 请求重新获取首次页面位图');
-        // 发送WebSocket消息请求重新获取位图
         if (ws && ws.readyState === WebSocket.OPEN) {
             var message = {
                 event: 'request-initial-bitmap',
-                data: {}
+                data: {
+                    width: Mstsc.$("myCanvas").width,
+                    height: Mstsc.$("myCanvas").height,
+                    timestamp: Math.floor(Date.now() / 1000)
+                }
             };
             ws.send(JSON.stringify(message));
+            console.log('[index.html] 已发送初始位图请求');
         }
     }
     
@@ -627,16 +537,53 @@
     function showReusedConnectionMessage(message) {
         // 创建一个简单的提示框
         var alertDiv = document.createElement('div');
-        alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; border: 1px solid #c3e6cb; z-index: 1000; max-width: 300px;';
+        alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; border: 1px solid #c3e6cb; z-index: 1000; max-width: 400px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: 14px; line-height: 1.4;';
         alertDiv.innerHTML = '<strong>连接信息:</strong><br>' + message;
         document.body.appendChild(alertDiv);
+        
+        // 添加关闭按钮
+        var closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '×';
+        closeBtn.style.cssText = 'position: absolute; top: 5px; right: 10px; background: none; border: none; font-size: 18px; color: #155724; cursor: pointer; font-weight: bold;';
+        closeBtn.onclick = function() {
+            if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+            }
+        };
+        alertDiv.appendChild(closeBtn);
         
         // 3秒后自动移除提示
         setTimeout(function() {
             if (alertDiv.parentNode) {
                 alertDiv.parentNode.removeChild(alertDiv);
             }
-        }, 3000);
+        }, 5000);
+    }
+
+    // 显示WebSocket连接错误的函数
+    function showConnectionError(message) {
+        var alertDiv = document.createElement('div');
+        alertDiv.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #f8d7da; color: #721c24; padding: 15px; border-radius: 5px; border: 1px solid #f5c6cb; z-index: 1000; max-width: 400px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: 14px; line-height: 1.4;';
+        alertDiv.innerHTML = '<strong>连接错误:</strong><br>' + message;
+        document.body.appendChild(alertDiv);
+
+        // 添加关闭按钮
+        var closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '×';
+        closeBtn.style.cssText = 'position: absolute; top: 5px; right: 10px; background: none; border: none; font-size: 18px; color: #721c24; cursor: pointer; font-weight: bold;';
+        closeBtn.onclick = function() {
+            if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+            }
+        };
+        alertDiv.appendChild(closeBtn);
+
+        // 5秒后自动移除
+        setTimeout(function() {
+            if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+            }
+        }, 8000); // 错误提示显示8秒
     }
     
     // 将函数暴露到全局作用域
@@ -644,7 +591,6 @@
     
     // 显示登录界面并预填充字段
     function showLoginForm(host, user, domain) {
-        console.log('[index.html] 显示登录界面');
         // 确保登录界面可见
         Mstsc.$("main").style.display = 'inline';
         Mstsc.$("myCanvas").style.display = 'none';
@@ -664,140 +610,55 @@
     }
     
 	function connect (ip, domain, username, password) {
-		console.log('=== [index.html] 开始连接RDP ===');
-		console.log('[index.html] 连接参数:', {
-			ip: ip,
-			domain: domain,
-			username: username,
-			password: password ? '***' : '未提供'
-		});
-		
-		console.log('[index.html] 隐藏登录界面...');
 		Mstsc.$("main").style.display = 'none';
 		
 		var canvas = Mstsc.$("myCanvas");
-		console.log('[index.html] 获取canvas元素:', {
-			canvasId: canvas.id,
-			currentWidth: canvas.width,
-			currentHeight: canvas.height,
-			currentDisplay: canvas.style.display
-		});
 		
-		console.log('[index.html] 显示canvas并设置尺寸...');
+		// 确保canvas可见
 		canvas.style.display = 'inline';
 		
 		// 强制刷新canvas尺寸
 		refreshCanvasSize();
 		
-		// 修复：确保canvas尺寸设置正确
-		var canvasWidth = window.innerWidth;
-		var canvasHeight = window.innerHeight;
-		
-		console.log('[index.html] 计算canvas尺寸:', {
-			windowWidth: window.innerWidth,
-			windowHeight: window.innerHeight,
-			calculatedWidth: canvasWidth,
-			calculatedHeight: canvasHeight
-		});
-		
-		// 设置canvas的CSS尺寸
-		canvas.style.width = canvasWidth + 'px';
-		canvas.style.height = canvasHeight + 'px';
-		
-		// 设置canvas的实际尺寸（像素）
-		canvas.width = canvasWidth;
-		canvas.height = canvasHeight;
-		
-		// 验证canvas尺寸设置
-		var rect = canvas.getBoundingClientRect();
-		console.log('[index.html] Canvas设置完成:', {
-			finalWidth: canvas.width,
-			finalHeight: canvas.height,
-			cssWidth: canvas.style.width,
-			cssHeight: canvas.style.height,
-			finalDisplay: canvas.style.display,
-			boundingRect: {
-				width: rect.width,
-				height: rect.height
-			},
-			windowWidth: window.innerWidth,
-			windowHeight: window.innerHeight
-		});
-		
-		// 验证canvas是否可见且尺寸正确
-		if (canvas.width <= 0 || canvas.height <= 0) {
-			console.error('[index.html] Canvas尺寸设置失败！');
-			console.error('[index.html] Canvas尺寸:', canvas.width, 'x', canvas.height);
-			return;
-		}
-		
-		if (rect.width <= 0 || rect.height <= 0) {
-			console.error('[index.html] Canvas边界矩形无效！');
-			console.error('[index.html] 边界矩形:', rect.width, 'x', rect.height);
-			return;
-		}
-		
-		// 确保canvas可见
-		if (canvas.style.display === 'none') {
-			console.error('[index.html] Canvas仍然不可见，强制显示');
-			canvas.style.display = 'inline';
-		}
-		
-		console.log('[index.html] 开始RDP连接...');
-		client.connect(ip, domain, username, password, function (err) {
-			console.log('[index.html] RDP连接回调:', {
-				hasError: !!err,
-				error: err
-			});
-			
-			if (err) {
-				console.error('[index.html] RDP连接失败:', err);
-				// 连接失败时隐藏canvas，显示登录界面
-				console.log('[index.html] 隐藏canvas，显示登录界面...');
-				Mstsc.$("myCanvas").style.display = 'none';
+		// 等待canvas尺寸设置完成后再连接
+		setTimeout(function() {
+			// 验证canvas尺寸
+			if (canvas.width <= 0 || canvas.height <= 0) {
+				console.error('[index.html] Canvas尺寸无效，无法建立连接');
 				Mstsc.$("main").style.display = 'inline';
-			} else {
-				console.log('[index.html] RDP连接成功，保持canvas显示');
-				// 连接成功时保持canvas显示，请求初始位图
-				requestInitialBitmap();
+				Mstsc.$("myCanvas").style.display = 'none';
+				return;
 			}
 			
-			console.log('=== [index.html] RDP连接处理完成 ===');
-		});
+			// 验证canvas是否可见
+			if (canvas.style.display === 'none') {
+				canvas.style.display = 'inline';
+			}
+			
+			console.log('[index.html] 开始RDP连接，Canvas尺寸:', canvas.width, 'x', canvas.height);
+			
+			client.connect(ip, domain, username, password, function (err) {
+				if (err) {
+					// 连接失败时隐藏canvas，显示登录界面
+					Mstsc.$("myCanvas").style.display = 'none';
+					Mstsc.$("main").style.display = 'inline';
+				} else {
+					// 连接成功时保持canvas显示，请求初始位图
+					requestInitialBitmap();
+				}
+			});
+		}, 100);
 	}
 
     // 调试canvas状态的函数
     function debugCanvasState() {
         var canvas = Mstsc.$("myCanvas");
         if (!canvas) {
-            console.error('[index.html] Canvas元素不存在');
             return;
         }
         
         var rect = canvas.getBoundingClientRect();
-        console.log('[index.html] Canvas状态调试:', {
-            id: canvas.id,
-            display: canvas.style.display,
-            visibility: canvas.style.visibility,
-            width: canvas.width,
-            height: canvas.height,
-            cssWidth: canvas.style.width,
-            cssHeight: canvas.style.height,
-            boundingRect: {
-                left: rect.left,
-                top: rect.top,
-                width: rect.width,
-                height: rect.height
-            },
-            windowSize: {
-                width: window.innerWidth,
-                height: window.innerHeight
-            },
-            documentSize: {
-                width: document.documentElement.clientWidth,
-                height: document.documentElement.clientHeight
-            }
-        });
+        // Canvas状态调试信息
     }
     
     // 将调试函数暴露到全局作用域
@@ -807,11 +668,8 @@
     
     // 测试canvas渲染的函数
     function testCanvasRendering() {
-        console.log('[index.html] 开始测试canvas渲染...');
-        
         var canvas = Mstsc.$("myCanvas");
         if (!canvas) {
-            console.error('[index.html] Canvas元素不存在');
             return;
         }
         
@@ -823,22 +681,13 @@
         
         // 验证canvas尺寸
         if (canvas.width <= 0 || canvas.height <= 0) {
-            console.error('[index.html] Canvas尺寸无效:', canvas.width, 'x', canvas.height);
             return;
         }
         
         var ctx = canvas.getContext('2d');
         if (!ctx) {
-            console.error('[index.html] 无法获取canvas上下文');
             return;
         }
-        
-        console.log('[index.html] Canvas测试环境:', {
-            canvasWidth: canvas.width,
-            canvasHeight: canvas.height,
-            ctxAvailable: !!ctx,
-            display: canvas.style.display
-        });
         
         // 清除canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -866,20 +715,10 @@
         ctx.lineWidth = 2;
         ctx.strokeRect(0, 0, canvas.width, canvas.height);
         
-        console.log('[index.html] Canvas测试完成');
-        
         // 验证渲染结果
         setTimeout(function() {
             var rect = canvas.getBoundingClientRect();
-            console.log('[index.html] 测试后Canvas状态:', {
-                width: canvas.width,
-                height: canvas.height,
-                boundingRect: {
-                    width: rect.width,
-                    height: rect.height
-                },
-                display: canvas.style.display
-            });
+            // 测试后Canvas状态
         }, 100);
     }
     

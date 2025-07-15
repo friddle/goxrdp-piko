@@ -191,12 +191,15 @@
 					console.warn('[canvas.js] 数据太长，截断到期望长度');
 					input = input.slice(0, expectedDataLength);
 				} else if (input.length < expectedDataLength) {
-					console.warn('[canvas.js] 数据太短，填充到期望长度');
+					console.warn('[canvas.js] 数据太短，使用重复模式填充到期望长度');
 					var paddedInput = new Uint8Array(expectedDataLength);
 					paddedInput.set(input);
-					// 用0填充剩余部分
+					
+					// 使用重复模式填充剩余部分，而不是用0填充
+					var repeatIndex = 0;
 					for (var i = input.length; i < expectedDataLength; i++) {
-						paddedInput[i] = 0;
+						paddedInput[i] = input[repeatIndex % input.length];
+						repeatIndex++;
 					}
 					input = paddedInput;
 				}
@@ -476,6 +479,18 @@
 				
 				if (allZero) {
 					console.warn('[canvas.js] ⚠️ 警告：原始数据样本全为0，可能导致全黑显示');
+					console.warn('[canvas.js] 全黑位图详情:', {
+						width: bitmap.width,
+						height: bitmap.height,
+						bitsPerPixel: bitmap.bitsPerPixel,
+						isCompress: bitmap.isCompress,
+						destLeft: bitmap.destLeft,
+						destTop: bitmap.destTop,
+						destRight: bitmap.destRight,
+						destBottom: bitmap.destBottom,
+						dataLength: bitmap.data.length,
+						sampleData: sampleData
+					});
 				} else if (all255) {
 					console.warn('[canvas.js] ⚠️ 警告：原始数据样本全为255，可能导致全白显示');
 				} else {
@@ -624,8 +639,17 @@
 							console.warn('[canvas.js] 截断输出数据从', output.data.length, '到', expectedDataLength);
 							output.data = output.data.slice(0, expectedDataLength);
 						} else {
-							console.warn('[canvas.js] 输出数据太短，无法渲染');
-							return;
+							console.warn('[canvas.js] 输出数据太短，使用重复模式填充');
+							var paddedData = new Uint8ClampedArray(expectedDataLength);
+							paddedData.set(output.data);
+							
+							// 使用重复模式填充剩余部分
+							var repeatIndex = 0;
+							for (var i = output.data.length; i < expectedDataLength; i++) {
+								paddedData[i] = output.data[repeatIndex % output.data.length];
+								repeatIndex++;
+							}
+							output.data = paddedData;
 						}
 					}
 				}
@@ -743,7 +767,7 @@
 						console.log('[canvas.js] 开始渲染裁剪后的数据到canvas，位置:', clipX, clipY);
 						this.ctx.putImageData(clippedImageData, clipX, clipY);
 					} else {
-						console.warn('[canvas.js] 裁剪后区域无效，尝试调整渲染位置');
+						console.warn('[canvas.js] 裁剪后区域无效，跳过渲染');
 						console.warn('[canvas.js] 裁剪区域详情:', {
 							clipWidth: clipWidth,
 							clipHeight: clipHeight,
@@ -754,38 +778,7 @@
 							canvasWidth: this.canvas.width,
 							canvasHeight: this.canvas.height
 						});
-						
-						// 尝试调整渲染位置到canvas内部
-						var adjustedX = Math.max(0, Math.min(renderX, this.canvas.width - output.width));
-						var adjustedY = Math.max(0, Math.min(renderY, this.canvas.height - output.height));
-						
-						console.log('[canvas.js] 尝试调整渲染位置:', {
-							originalX: renderX,
-							originalY: renderY,
-							adjustedX: adjustedX,
-							adjustedY: adjustedY
-						});
-						
-						// 如果调整后的位置有效，尝试渲染
-						if (adjustedX >= 0 && adjustedY >= 0 && 
-							adjustedX + output.width <= this.canvas.width && 
-							adjustedY + output.height <= this.canvas.height) {
-							console.log('[canvas.js] 使用调整后的位置渲染:', adjustedX, adjustedY);
-							this.ctx.putImageData(imageData, adjustedX, adjustedY);
-						} else {
-							console.error('[canvas.js] 调整后的位置仍然无效，跳过渲染');
-							console.error('[canvas.js] 调整后位置检查:', {
-								adjustedX: adjustedX,
-								adjustedY: adjustedY,
-								outputWidth: output.width,
-								outputHeight: output.height,
-								canvasWidth: this.canvas.width,
-								canvasHeight: this.canvas.height,
-								xValid: adjustedX >= 0 && adjustedX + output.width <= this.canvas.width,
-								yValid: adjustedY >= 0 && adjustedY + output.height <= this.canvas.height
-							});
-							return;
-						}
+						return; // 直接返回，不进行任何渲染
 					}
 				} else {
 					console.log('[canvas.js] 开始渲染到canvas，位置:', renderX, renderY);
@@ -818,6 +811,27 @@
 	Mstsc.Canvas = {
 		create : function (canvas) {
 			return new Canvas(canvas);
+		}
+	}
+	
+	/**
+	 * Decompress bitmap
+	 */
+	function decompress (bitmap) {
+		console.log('[canvas.js] Mstsc.decompress called for bitmap:', {
+			width: bitmap.width,
+			height: bitmap.height,
+			bitsPerPixel: bitmap.bitsPerPixel,
+			isCompress: bitmap.isCompress,
+			dataLength: bitmap.data ? bitmap.data.length : 0
+		});
+		
+		if (bitmap.isCompress) {
+			// 压缩数据，需要解压缩
+			return core.Decompress(bitmap.data, bitmap.width, bitmap.height, bitmap.bitsPerPixel);
+		} else {
+			console.log('[canvas.js] Bitmap is not compressed, returning original data');
+			return bitmap.data;
 		}
 	}
 	

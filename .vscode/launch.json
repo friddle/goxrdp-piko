@@ -18,18 +18,14 @@
                 "GOCACHE": "/home/friddle/.cache/go-build",
                 "GOPRIVATE": "git.laiye.com",
                 "PIKO_NAME": "goxrdp-test",
-                "PIKO_REMOTE": "http://piko-upstream.inner-service.laiye.com:8089",
-                "XRDP_HOST": "192.168.16.34",
-                "XRDP_USER": "friddle",
-                "XRDP_PASS": "88636311",
                 "PIKO_AUTO_EXIT": "true"
             },
             "args": [
                 "--name=goxrdp-test",
-                "--remote=http://piko-upstream.inner-service.laiye.com:8089",
-                "--xrdp-host=192.168.16.34",
-                "--xrdp-user=friddle",
-                "--xrdp-pass=88636311"
+                "--remote=http://192.168.10.95:8022",
+                "--xrdp-host=192.168.16.36",
+                "--xrdp-user=friddle-laiye",
+                "--xrdp-pass=laiye-2022"
             ]
         }
     ]

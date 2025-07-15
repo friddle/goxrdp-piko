@@ -29,30 +29,14 @@
 		return button;
 	};
 	
-	/**
-	 * 检查是否为拖拽操作
-	 * @param button {integer} 鼠标按钮编号
-	 * @param pressedButtons {Set} 当前按下的按钮集合
-	 * @returns {boolean} 是否为拖拽操作
-	 */
-	function isDragOperation(button, pressedButtons) {
-		// 只有左键（button=0）才允许拖拽操作
-		// 右键（button=2）和中键（button=1）不进行拖拽
-		return button === 0 && pressedButtons.has(0);
-	}
-	
 	function getCanvasRelativePosition(e, canvas) {
 		var rect = canvas.getBoundingClientRect();
 		var scaleX = canvas.width / rect.width;
 		var scaleY = canvas.height / rect.height;
 		
-		// 计算相对于canvas的坐标
-		var x = (e.clientX - rect.left) * scaleX;
-		var y = (e.clientY - rect.top) * scaleY;
-		
-		// 确保坐标在有效范围内
-		x = Math.max(0, Math.min(canvas.width - 1, x));
-		y = Math.max(0, Math.min(canvas.height - 1, y));
+		// 修复：确保坐标在有效范围内
+		var x = Math.max(0, Math.min(canvas.width, (e.clientX - rect.left) * scaleX));
+		var y = Math.max(0, Math.min(canvas.height, (e.clientY - rect.top) * scaleY));
 		
 		return {
 			x: Math.round(x),
@@ -66,25 +50,14 @@
 	function fixCanvasScaling(canvas) {
 		if (!canvas) return false;
 		
-		// 获取canvas的显示尺寸
-		var displayWidth = canvas.clientWidth || canvas.offsetWidth;
-		var displayHeight = canvas.clientHeight || canvas.offsetHeight;
+		// 确保canvas尺寸与显示尺寸一致
+		var displayWidth = canvas.clientWidth || canvas.offsetWidth || window.innerWidth;
+		var displayHeight = canvas.clientHeight || canvas.offsetHeight || window.innerHeight;
 		
-		// 如果CSS尺寸未设置，使用窗口尺寸
-		if (!displayWidth || !displayHeight) {
-			displayWidth = window.innerWidth;
-			displayHeight = window.innerHeight;
-			
-			// 设置CSS尺寸
-			canvas.style.width = displayWidth + 'px';
-			canvas.style.height = displayHeight + 'px';
-		}
-		
-		// 确保canvas像素尺寸与显示尺寸一致
 		if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
 			canvas.width = displayWidth;
 			canvas.height = displayHeight;
-			console.log('[client.js] Canvas尺寸已更新:', displayWidth, 'x', displayHeight);
+			console.log('[client.js] Canvas尺寸已修复:', canvas.width, 'x', canvas.height);
 		}
 		
 		return true;
@@ -94,77 +67,34 @@
 	 * 检查并修复连接状态
 	 */
 	function checkAndFixConnection(self) {
-		// console.log('检查连接状态:', {
-		// 	hasSocket: !!self.socket,
-		// 	socketState: self.socket ? self.socket.readyState : 'no socket',
-		// 	activeSession: self.activeSession,
-		// 	windowWs: typeof window.ws,
-		// 	windowWsState: window.ws ? window.ws.readyState : 'undefined'
-		// });
+		console.log('[client.js] 检查鼠标事件连接状态:', {
+			hasSocket: !!self.socket,
+			socketState: self.socket ? self.socket.readyState : 'no socket',
+			activeSession: self.activeSession,
+			windowWs: typeof window.ws,
+			windowWsState: window.ws ? window.ws.readyState : 'undefined'
+		});
 		
 		// 如果socket不存在或已关闭，尝试重新获取
 		if (!self.socket || self.socket.readyState !== WebSocket.OPEN) {
+			console.log('[client.js] Socket状态异常，尝试重新获取');
 			if (typeof window.ws !== 'undefined' && window.ws && window.ws.readyState === WebSocket.OPEN) {
+				console.log('[client.js] 找到可用的WebSocket连接，重新设置');
 				self.socket = window.ws;
 				return true;
 			} else {
+				console.warn('[client.js] 没有可用的WebSocket连接');
 				return false;
 			}
 		}
 		
 		// 如果activeSession为false但socket可用，尝试强制激活
 		if (!self.activeSession && self.socket && self.socket.readyState === WebSocket.OPEN) {
+			console.log('[client.js] 尝试强制激活会话');
 			self.forceActivateSession();
 		}
 		
 		return true;
-	}
-	
-	/**
-	 * 检测数据是否全黑
-	 */
-	function isAllBlackData(data, sampleCount) {
-		if (!data || data.length === 0) return true;
-		
-		sampleCount = sampleCount || Math.min(100, data.length);
-		var allBlack = true;
-		
-		for (var i = 0; i < sampleCount; i += 4) { // 每4字节一个像素
-			if (i + 2 < data.length) {
-				// 检查RGB通道是否都为0（忽略Alpha通道）
-				if (data[i] !== 0 || data[i+1] !== 0 || data[i+2] !== 0) {
-					allBlack = false;
-					break;
-				}
-			}
-		}
-		
-		return allBlack;
-	}
-	
-	/**
-	 * 处理Base64编码的图像数据
-	 */
-	function processBase64ImageData(base64Data, width, height) {
-		try {
-			// 将Base64字符串转换为二进制数据
-			var binaryString = atob(base64Data);
-			var decodedData = new Uint8Array(binaryString.length);
-			for (var k = 0; k < binaryString.length; k++) {
-				decodedData[k] = binaryString.charCodeAt(k);
-			}
-			
-			// 检测解码后的全黑数据
-			if (decodedData.length > 0 && isAllBlackData(decodedData, 100)) {
-				console.warn('[client.js] ⚠️ 警告：解码后数据全黑，跳过渲染');
-				return null; // 返回null表示跳过渲染
-			}
-			
-			return decodedData;
-		} catch (e) {
-			console.error('[client.js] Base64解码失败:', e);
-			return null;
-		}
 	}
 	
 	/**
@@ -180,20 +110,12 @@
 		this.socket = null;
 		this.activeSession = false;
 		
-		// 添加鼠标状态跟踪
-		this.mouseState = {
-			isDragging: false,
-			lastX: 0,
-			lastY: 0,
-			pressedButtons: new Set(),
-			lastMoveTime: 0
-		};
-		
 		// 添加窗口大小变化监听
 		var self = this;
 		window.addEventListener('resize', function() {
 			setTimeout(function() {
 				fixCanvasScaling(self.canvas);
+				console.log('[client.js] 窗口大小变化，Canvas尺寸已更新');
 			}, 100);
 		});
 		
@@ -215,64 +137,58 @@
 				}
 				
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
+					console.warn('[client.js] 鼠标移动事件被忽略:', {
+						hasSocket: !!self.socket,
+						socketState: self.socket ? self.socket.readyState : 'no socket',
+						activeSession: self.activeSession
+					});
 					return;
 				}
 				
 				var pos = getCanvasRelativePosition(e, self.canvas);
-				
-				// 降低采样率：每50ms才发送一次鼠标移动事件
-				var now = Date.now();
-				if (now - self.mouseState.lastMoveTime < 50) {
-					return;
-				}
-				self.mouseState.lastMoveTime = now;
-				
-				// 更新鼠标状态
-				self.mouseState.lastX = pos.x;
-				self.mouseState.lastY = pos.y;
-				
-				// 修复：改进拖拽逻辑，只有左键才进行拖拽
-				if (self.mouseState.isDragging && isDragOperation(0, self.mouseState.pressedButtons)) {
-					// 左键拖拽时发送鼠标移动事件，保持按下状态
-					var mouseEvent = {
-						event: 'mouse',
-						data: [pos.x, pos.y, 0, true] // 左键按下状态
-					};
-					self.socket.send(JSON.stringify(mouseEvent));
-				} else {
-					// 普通移动事件或非左键拖拽
-					var mouseEvent = {
-						event: 'mouse',
-						data: [pos.x, pos.y, 0, false]
-					};
-					self.socket.send(JSON.stringify(mouseEvent));
-				}
-				
+				var mouseEvent = {
+					event: 'mouse',
+					data: [pos.x, pos.y, 0, false]
+				};
+				self.socket.send(JSON.stringify(mouseEvent));
 				e.preventDefault();
 				return false;
 			});
 			
 			this.canvas.addEventListener('mousedown', function (e) {
+				console.log('[client.js] 鼠标按下事件触发:', {
+					button: e.button,
+					clientX: e.clientX,
+					clientY: e.clientY,
+					canvasWidth: self.canvas.width,
+					canvasHeight: self.canvas.height
+				});
+				
 				// 检查并尝试修复连接状态
 				if (!checkAndFixConnection(self)) {
+					console.warn('[client.js] 无法修复连接状态，鼠标按下事件被忽略');
 					return;
 				}
 				
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
+					console.warn('[client.js] 鼠标按下事件被忽略:', {
+						hasSocket: !!self.socket,
+						socketState: self.socket ? self.socket.readyState : 'no socket',
+						activeSession: self.activeSession
+					});
 					return;
 				}
 				
 				var pos = getCanvasRelativePosition(e, self.canvas);
 				var mappedButton = mouseButtonMap(e.button);
 				
-				// 更新鼠标状态
-				self.mouseState.pressedButtons.add(mappedButton);
-				self.mouseState.lastX = pos.x;
-				self.mouseState.lastY = pos.y;
-				// 修复：只有左键才设置拖拽状态
-				if (mappedButton === 0) {
-					self.mouseState.isDragging = true;
-				}
+				console.log('[client.js] 鼠标按下事件处理:', {
+					originalButton: e.button,
+					mappedButton: mappedButton,
+					position: pos,
+					activeSession: self.activeSession,
+					canvasRect: self.canvas.getBoundingClientRect()
+				});
 				
 				var mouseEvent = {
 					event: 'mouse',
@@ -281,7 +197,9 @@
 				
 				try {
 					self.socket.send(JSON.stringify(mouseEvent));
+					console.log('[client.js] 鼠标按下事件发送成功:', mouseEvent);
 				} catch (error) {
+					console.error('[client.js] 鼠标按下事件发送失败:', error);
 				}
 				
 				e.preventDefault();
@@ -290,61 +208,74 @@
 			
 			// 原有canvas mouseup事件监听
 			this.canvas.addEventListener('mouseup', function (e) {
+				console.log('[client.js] canvas mouseup:', e);
 				// 检查并尝试修复连接状态
 				if (!checkAndFixConnection(self)) {
+					console.warn('[client.js] 无法修复连接状态，鼠标释放事件被忽略');
 					return;
 				}
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
+					console.warn('[client.js] 鼠标释放事件被忽略:', {
+						hasSocket: !!self.socket,
+						socketState: self.socket ? self.socket.readyState : 'no socket',
+						activeSession: self.activeSession
+					});
 					return;
 				}
 				var pos = getCanvasRelativePosition(e, self.canvas);
 				var mappedButton = mouseButtonMap(e.button);
-				
-				// 更新鼠标状态
-				self.mouseState.pressedButtons.delete(mappedButton);
-				// 修复：只有左键释放时才清除拖拽状态
-				if (mappedButton === 0) {
-					self.mouseState.isDragging = false;
-				}
-				
+				console.log('[client.js] 鼠标释放事件处理:', {
+					originalButton: e.button,
+					mappedButton: mappedButton,
+					position: pos,
+					activeSession: self.activeSession
+				});
 				var mouseEvent = {
 					event: 'mouse',
 					data: [pos.x, pos.y, mappedButton, false]
 				};
 				try {
 					self.socket.send(JSON.stringify(mouseEvent));
+					console.log('[client.js] 鼠标释放事件发送成功:', mouseEvent);
 				} catch (error) {
+					console.error('[client.js] 鼠标释放事件发送失败:', error);
 				}
 				e.preventDefault();
 				return false;
 			});
-			
 			// 新增window mouseup事件监听
 			window.addEventListener('mouseup', function (e) {
+				console.log('[client.js] window mouseup:', e);
 				// 检查并尝试修复连接状态
 				if (!checkAndFixConnection(self)) {
+					console.warn('[client.js] 无法修复连接状态，window鼠标释放事件被忽略');
 					return;
 				}
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
+					console.warn('[client.js] window鼠标释放事件被忽略:', {
+						hasSocket: !!self.socket,
+						socketState: self.socket ? self.socket.readyState : 'no socket',
+						activeSession: self.activeSession
+					});
 					return;
 				}
 				var pos = getCanvasRelativePosition(e, self.canvas);
 				var mappedButton = mouseButtonMap(e.button);
-				
-				// 更新鼠标状态
-				self.mouseState.pressedButtons.delete(mappedButton);
-				// 修复：只有左键释放时才清除拖拽状态
-				if (mappedButton === 0) {
-					self.mouseState.isDragging = false;
-				}
-				
+				console.log('[client.js] window鼠标释放事件处理:', {
+					originalButton: e.button,
+					mappedButton: mappedButton,
+					position: pos,
+					activeSession: self.activeSession
+				});
 				var mouseEvent = {
 					event: 'mouse',
 					data: [pos.x, pos.y, mappedButton, false]
 				};
 				try {
 					self.socket.send(JSON.stringify(mouseEvent));
+					console.log('[client.js] window鼠标释放事件发送成功:', mouseEvent);
 				} catch (error) {
+					console.error('[client.js] window鼠标释放事件发送失败:', error);
 				}
 				e.preventDefault();
 				return false;
@@ -357,6 +288,7 @@
 				}
 				
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
+					console.warn('[client.js] 右键菜单事件被忽略');
 					return;
 				}
 				
@@ -368,7 +300,9 @@
 				
 				try {
 					self.socket.send(JSON.stringify(mouseEvent));
+					console.log('[client.js] 右键菜单事件发送成功:', mouseEvent);
 				} catch (error) {
+					console.error('[client.js] 右键菜单事件发送失败:', error);
 				}
 				
 				e.preventDefault();
@@ -381,6 +315,7 @@
 				}
 				
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
+					console.warn('[client.js] DOMMouseScroll事件被忽略');
 					return;
 				}
 				
@@ -395,7 +330,9 @@
 				
 				try {
 					self.socket.send(JSON.stringify(wheelEvent));
+					console.log('[client.js] DOMMouseScroll事件发送成功:', wheelEvent);
 				} catch (error) {
+					console.error('[client.js] DOMMouseScroll事件发送失败:', error);
 				}
 				
 				e.preventDefault();
@@ -408,6 +345,7 @@
 				}
 				
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
+					console.warn('[client.js] mousewheel事件被忽略');
 					return;
 				}
 				
@@ -422,7 +360,9 @@
 				
 				try {
 					self.socket.send(JSON.stringify(wheelEvent));
+					console.log('[client.js] mousewheel事件发送成功:', wheelEvent);
 				} catch (error) {
+					console.error('[client.js] mousewheel事件发送失败:', error);
 				}
 				
 				e.preventDefault();
@@ -431,29 +371,31 @@
 			
 			// bind keyboard event
 			window.addEventListener('keydown', function (e) {
-					// console.log('检查连接状态:', {
-					// 	key: e.key,
-					// 	code: e.code,
-					// 	keyCode: e.keyCode,
-					// 	socketReady: self.socket && self.socket.readyState === WebSocket.OPEN,
-					// 	activeSession: self.activeSession,
-					// 	scancode: Mstsc.scancode(e)
-					// });
-					
+				console.log('[client.js] 键盘按下事件:', {
+					key: e.key,
+					code: e.code,
+					keyCode: e.keyCode,
+					socketReady: self.socket && self.socket.readyState === WebSocket.OPEN,
+					activeSession: self.activeSession,
+					scancode: Mstsc.scancode(e)
+				});
+				
 				// 检查并尝试修复连接状态
 				if (!self.checkAndFixConnection()) {
+					console.warn('[client.js] 无法修复连接状态，键盘事件被忽略');
 					return;
 				}
 				
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
-						// console.log('检查连接状态:', {
-						// 	hasSocket: !!self.socket,
-						// 	socketState: self.socket ? self.socket.readyState : 'no socket',
-						// 	activeSession: self.activeSession
-						// });
+					console.warn('[client.js] 键盘事件被忽略:', {
+						hasSocket: !!self.socket,
+						socketState: self.socket ? self.socket.readyState : 'no socket',
+						activeSession: self.activeSession
+					});
 					
 					// 如果activeSession为false，尝试强制激活（用于调试）
 					if (!self.activeSession && self.socket && self.socket.readyState === WebSocket.OPEN) {
+						console.log('[client.js] 尝试强制激活会话');
 						self.forceActivateSession();
 					}
 					return;
@@ -461,6 +403,7 @@
 				
 				var scancode = Mstsc.scancode(e);
 				if (!scancode || scancode === 0) {
+					console.warn('[client.js] 无效的扫描码:', scancode, 'for key:', e.key, 'code:', e.code);
 					return;
 				}
 				
@@ -468,35 +411,38 @@
 					event: 'scancode',
 					data: [scancode, true]
 				};
+				console.log('[client.js] 发送键盘按下事件:', keyboardEvent);
 				self.socket.send(JSON.stringify(keyboardEvent));
 
 				e.preventDefault();
 				return false;
 			});
 			window.addEventListener('keyup', function (e) {
-					// console.log('检查连接状态:', {
-					// 	key: e.key,
-					// 	code: e.code,
-					// 	keyCode: e.keyCode,
-					// 	socketReady: self.socket && self.socket.readyState === WebSocket.OPEN,
-					// 	activeSession: self.activeSession,
-					// 	scancode: Mstsc.scancode(e)
-					// });
-					
+				console.log('[client.js] 键盘释放事件:', {
+					key: e.key,
+					code: e.code,
+					keyCode: e.keyCode,
+					socketReady: self.socket && self.socket.readyState === WebSocket.OPEN,
+					activeSession: self.activeSession,
+					scancode: Mstsc.scancode(e)
+				});
+				
 				// 检查并尝试修复连接状态
 				if (!self.checkAndFixConnection()) {
+					console.warn('[client.js] 无法修复连接状态，键盘事件被忽略');
 					return;
 				}
 				
 				if (!self.socket || self.socket.readyState !== WebSocket.OPEN || !self.activeSession) {
-						// console.log('检查连接状态:', {
-						// 	hasSocket: !!self.socket,
-						// 	socketState: self.socket ? self.socket.readyState : 'no socket',
-						// 	activeSession: self.activeSession
-						// });
+					console.warn('[client.js] 键盘事件被忽略:', {
+						hasSocket: !!self.socket,
+						socketState: self.socket ? self.socket.readyState : 'no socket',
+						activeSession: self.activeSession
+					});
 					
 					// 如果activeSession为false，尝试强制激活（用于调试）
 					if (!self.activeSession && self.socket && self.socket.readyState === WebSocket.OPEN) {
+						console.log('[client.js] 尝试强制激活会话');
 						self.forceActivateSession();
 					}
 					return;
@@ -504,6 +450,7 @@
 				
 				var scancode = Mstsc.scancode(e);
 				if (!scancode || scancode === 0) {
+					console.warn('[client.js] 无效的扫描码:', scancode, 'for key:', e.key, 'code:', e.code);
 					return;
 				}
 				
@@ -511,6 +458,7 @@
 					event: 'scancode',
 					data: [scancode, false]
 				};
+				console.log('[client.js] 发送键盘释放事件:', keyboardEvent);
 				self.socket.send(JSON.stringify(keyboardEvent));
 				
 				e.preventDefault();
@@ -530,17 +478,18 @@
 		connect : function (ip, domain, username, password, next) {
 			var self = this;
 			
-				// console.log('检查连接状态:', {
-				// 	ip: ip,
-				// 	domain: domain,
-				// 	username: username,
-				// 	hasPassword: !!password,
-				// 	windowWs: typeof window.ws,
-				// 	windowWsState: window.ws ? window.ws.readyState : 'undefined'
-				// });
+			console.log('[mstsc.js] 开始连接RDP:', {
+				ip: ip,
+				domain: domain,
+				username: username,
+				hasPassword: !!password,
+				windowWs: typeof window.ws,
+				windowWsState: window.ws ? window.ws.readyState : 'undefined'
+			});
 			
 			// 检查是否已经有全局的WebSocket连接
 			if (typeof window.ws !== 'undefined' && window.ws && window.ws.readyState === WebSocket.OPEN) {
+				console.log('[mstsc.js] 使用现有的WebSocket连接');
 				this.socket = window.ws;
 				
 				// 设置消息处理器
@@ -549,16 +498,18 @@
 				// 发送连接信息
 				this.sendConnectionInfo(ip, domain, username, password);
 			} else {
+				console.log('[mstsc.js] 没有可用的WebSocket连接，等待连接建立...');
 				
 				// 等待WebSocket连接建立
 				var checkConnection = function() {
-						// console.log('检查连接状态:', {
-						// 	windowWs: typeof window.ws,
-						// 	windowWsState: window.ws ? window.ws.readyState : 'undefined',
-						// 	windowWsOpen: window.ws ? window.ws.readyState === WebSocket.OPEN : false
-						// });
+					console.log('[mstsc.js] 检查WebSocket连接状态:', {
+						windowWs: typeof window.ws,
+						windowWsState: window.ws ? window.ws.readyState : 'undefined',
+						windowWsOpen: window.ws ? window.ws.readyState === WebSocket.OPEN : false
+					});
 					
 					if (typeof window.ws !== 'undefined' && window.ws && window.ws.readyState === WebSocket.OPEN) {
+						console.log('[mstsc.js] WebSocket连接已建立，开始RDP连接');
 						self.socket = window.ws;
 						
 						// 设置消息处理器
@@ -567,6 +518,7 @@
 						// 发送连接信息
 						self.sendConnectionInfo(ip, domain, username, password);
 					} else {
+						console.log('[mstsc.js] 等待WebSocket连接...');
 						setTimeout(checkConnection, 100);
 					}
 				};
@@ -581,11 +533,11 @@
 		setupMessageHandler : function(next) {
 			var self = this;
 			
-				// console.log('检查连接状态:', {
-				// 	hasSocket: !!this.socket,
-				// 	socketState: this.socket ? this.socket.readyState : 'no socket',
-				// 	activeSession: this.activeSession
-				// });
+			console.log('[mstsc.js] 设置消息处理器:', {
+				hasSocket: !!this.socket,
+				socketState: this.socket ? this.socket.readyState : 'no socket',
+				activeSession: this.activeSession
+			});
 			
 			// 保存原有的消息处理器
 			var originalOnMessage = this.socket.onmessage;
@@ -593,16 +545,20 @@
 			this.socket.onmessage = function(event) {
 				try {
 					var message = JSON.parse(event.data);
+					console.log('[mstsc.js] 收到消息:', message.event);
 					
 					switch(message.event) {
 						case 'rdp-connect':
+							console.log('[mstsc.js] RDP连接成功');
 							if (message.data && message.data.reused) {
+								console.log('[mstsc.js] 复用现有RDP连接');
 								// 可以在这里添加复用连接的提示信息
 								if (typeof window.showReusedConnectionMessage === 'function') {
 									window.showReusedConnectionMessage(message.data.message || '复用现有RDP连接');
 								}
 							}
 							self.activeSession = true;
+							console.log('[mstsc.js] 设置activeSession为true，现在可以处理键盘事件');
 							
 							// 连接成功后发送分辨率更新
 							setTimeout(function() {
@@ -610,6 +566,8 @@
 							}, 500);
 							break;
 						case 'rdp-bitmap':
+							// console.log('=== [client.js] 接收到bitmap更新事件 ===');
+							// console.log('[client.js] bitmap更新详情:', {
 							// 	bitsPerPixel: message.data.bitsPerPixel,
 							// 	rectanglesCount: message.data.rectangles ? message.data.rectangles.length : 0,
 							// 	timestamp: message.data.timestamp,
@@ -619,8 +577,10 @@
 							
 							// 处理多个矩形数据
 							if (message.data.rectangles && Array.isArray(message.data.rectangles)) {
+								// console.log('[client.js] 开始处理', message.data.rectangles.length, '个矩形');
 								
 								message.data.rectangles.forEach(function(rect, index) {
+									// console.log('[client.js] 处理矩形', index + 1, '/', message.data.rectangles.length, ':', {
 									// 	destLeft: rect.destLeft,
 									// 	destTop: rect.destTop,
 									// 	destRight: rect.destRight,
@@ -635,44 +595,52 @@
 									
 									// 验证矩形数据
 									if (!rect.data || rect.data.length === 0) {
+										console.error('[client.js] 矩形', index, '没有数据');
 										return;
 									}
 									
 									if (rect.width <= 0 || rect.height <= 0) {
+										console.error('[client.js] 矩形', index, '尺寸无效:', rect.width, 'x', rect.height);
 										return;
 									}
 									
 									if (rect.destRight < rect.destLeft || rect.destBottom < rect.destTop) {
+										console.error('[client.js] 矩形', index, '坐标无效');
 										return;
 									}
 									
 									// 后端已经解压缩，前端直接渲染
+									// console.log('[client.js] 矩形', index, '后端已解压缩，直接渲染');
 									
 									// 处理Base64编码的数据
 									var decodedData = null;
 									if (typeof rect.data === 'string') {
-										// 使用新的处理函数
-										decodedData = processBase64ImageData(rect.data, rect.width, rect.height);
-										if (decodedData === null) {
-											// 全黑数据，跳过渲染
+										// 如果是Base64字符串，解码为Uint8Array
+										// console.log('[client.js] 矩形', index, '检测到Base64编码数据，开始解码');
+										try {
+											// 将Base64字符串转换为二进制数据
+											var binaryString = atob(rect.data);
+											decodedData = new Uint8Array(binaryString.length);
+											for (var k = 0; k < binaryString.length; k++) {
+												decodedData[k] = binaryString.charCodeAt(k);
+											}
+											// console.log('[client.js] 矩形', index, 'Base64解码成功，解码后长度:', decodedData.length);
+										} catch (e) {
+											console.error('[client.js] 矩形', index, 'Base64解码失败:', e);
 											return;
 										}
 									} else {
 										// 如果不是字符串，直接使用原始数据
 										decodedData = rect.data;
-										
-										// 检查原始数据是否全黑
-										if (isAllBlackData(decodedData, 100)) {
-											console.warn('[client.js] ⚠️ 警告：原始数据全黑，跳过渲染');
-											return;
-										}
 									}
 									
 									// 验证数据长度是否正确（RGBA格式，4字节/像素）
 									var expectedDataLength = rect.width * rect.height * 4;
 									if (decodedData.length !== expectedDataLength) {
+										console.warn('[client.js] 矩形', index, '数据长度不匹配，期望:', expectedDataLength, '实际:', decodedData.length);
 										
 										// 添加详细的数据类型调试信息
+										// console.log('[client.js] 矩形', index, '数据类型详情:', {
 										// 	dataType: typeof decodedData,
 										// 	constructor: decodedData ? decodedData.constructor.name : 'undefined',
 										// 	isArray: Array.isArray(decodedData),
@@ -684,34 +652,43 @@
 										
 										// 如果数据长度不匹配，尝试调整
 										if (decodedData.length < expectedDataLength) {
+											console.error('[client.js] 矩形', index, '数据不足，跳过');
 											return;
 										}
 										// 如果数据过多，截断到正确长度
 										if (decodedData.length > expectedDataLength) {
+											console.warn('[client.js] 矩形', index, '数据过多，截断到正确长度');
 											// 修复：使用正确的方式截断数据，避免数据丢失
 											var originalData = decodedData;
 											var truncatedData = null;
 											
 											if (decodedData instanceof Uint8Array) {
+												// console.log('[client.js] 矩形', index, '处理Uint8Array类型数据');
 												truncatedData = decodedData.slice(0, expectedDataLength);
 											} else if (decodedData instanceof ArrayBuffer) {
+												// console.log('[client.js] 矩形', index, '处理ArrayBuffer类型数据');
 												truncatedData = decodedData.slice(0, expectedDataLength);
 											} else if (Array.isArray(decodedData)) {
+												// console.log('[client.js] 矩形', index, '处理Array类型数据');
 												truncatedData = decodedData.slice(0, expectedDataLength);
 											} else if (decodedData && typeof decodedData.slice === 'function') {
+												// console.log('[client.js] 矩形', index, '处理具有slice方法的数据');
 												truncatedData = decodedData.slice(0, expectedDataLength);
 											} else {
 												// 如果是其他类型的数据，尝试转换为Uint8Array
+												// console.log('[client.js] 矩形', index, '尝试转换为Uint8Array');
 												try {
 													var tempArray = new Uint8Array(decodedData);
 													truncatedData = tempArray.slice(0, expectedDataLength);
 												} catch (e) {
+													console.error('[client.js] 矩形', index, '无法处理数据类型:', typeof decodedData, '错误:', e);
 													return;
 												}
 											}
 											
 											// 验证截断结果
 											if (truncatedData && truncatedData.length === expectedDataLength) {
+												// console.log('[client.js] 矩形', index, '数据截断成功:', {
 												// 	originalLength: originalData.length,
 												// 	truncatedLength: truncatedData.length,
 												// 	expectedLength: expectedDataLength,
@@ -719,12 +696,12 @@
 												// });
 												decodedData = truncatedData;
 											} else {
-													// console.log('检查连接状态:', {
-													// 	truncatedData: !!truncatedData,
-													// 	truncatedLength: truncatedData ? truncatedData.length : 'undefined',
-													// 	expectedLength: expectedDataLength
-													// });
-													return;
+												console.error('[client.js] 矩形', index, '数据截断失败:', {
+													truncatedData: !!truncatedData,
+													truncatedLength: truncatedData ? truncatedData.length : 'undefined',
+													expectedLength: expectedDataLength
+												});
+												return;
 											}
 										}
 									}
@@ -742,28 +719,42 @@
 										data: decodedData
 									};
 									
+									// console.log('[client.js] 准备调用canvas.render.update()处理矩形', index);
 									try {
 										self.render.update(processedRect);
+										// console.log('[client.js] 矩形', index, 'canvas渲染调用完成');
 									} catch (e) {
+										console.error('[client.js] 矩形', index, 'canvas渲染失败:', e);
+										console.error('[client.js] 错误堆栈:', e.stack);
 									}
 								});
 								
+								// console.log('[client.js] 所有矩形处理完成');
 							} else {
+								console.warn('[client.js] 没有矩形数据或格式无效');
+								// console.log('[client.js] message.data内容:', message.data);
 								
 								// 兼容单个位图对象的情况
 								try {
+									// console.log('[client.js] 尝试处理单个bitmap对象');
 									self.render.update(message.data);
+									// console.log('[client.js] 单个bitmap对象处理完成');
 								} catch (e) {
+									console.error('[client.js] 单个bitmap对象处理失败:', e);
+									console.error('[client.js] 错误堆栈:', e.stack);
 								}
 							}
 							
+							// console.log('=== [client.js] bitmap更新事件处理完成 ===');
 							break;
 						case 'rdp-close':
 							next(null);
+							console.log('[mstsc.js] RDP连接关闭');
 							self.activeSession = false;
 							break;
 						case 'rdp-error':
 							next(message.data);
+							console.log('[mstsc.js] RDP连接错误:', message.data);
 							self.activeSession = false;
 							break;
 					}
@@ -773,6 +764,7 @@
 						originalOnMessage.call(this, event);
 					}
 				} catch (e) {
+					console.error('[mstsc.js] 解析消息失败:', e);
 				}
 			};
 		},
@@ -798,14 +790,14 @@
 				}
 			};
 			
-				// console.log('检查连接状态:', {
-				// 	ip: infos.data.ip,
-				// 	port: infos.data.port,
-				// 	screen: infos.data.screen,
-				// 	domain: infos.data.domain,
-				// 	username: infos.data.username,
-				// 	hasPassword: !!infos.data.password
-				// });
+			console.log('[mstsc.js] 发送连接信息:', {
+				ip: infos.data.ip,
+				port: infos.data.port,
+				screen: infos.data.screen,
+				domain: infos.data.domain,
+				username: infos.data.username,
+				hasPassword: !!infos.data.password
+			});
 			
 			this.socket.send(JSON.stringify(infos));
 		},
@@ -814,6 +806,8 @@
 		 * 处理位图消息（从 index.html 转发）
 		 */
 		handleBitmapMessage : function(message) {
+			// console.log('=== [client.js] 通过 handleBitmapMessage 接收到bitmap更新事件 ===');
+			// console.log('[client.js] bitmap更新详情:', {
 			// 	bitsPerPixel: message.data.bitsPerPixel,
 			// 	rectanglesCount: message.data.rectangles ? message.data.rectangles.length : 0,
 			// 	timestamp: message.data.timestamp,
@@ -823,8 +817,10 @@
 			
 			// 处理多个矩形数据
 			if (message.data.rectangles && Array.isArray(message.data.rectangles)) {
+				// console.log('[client.js] 开始处理', message.data.rectangles.length, '个矩形');
 				
 				message.data.rectangles.forEach(function(rect, index) {
+					// console.log('[client.js] 处理矩形', index + 1, '/', message.data.rectangles.length, ':', {
 					// 	destLeft: rect.destLeft,
 					// 	destTop: rect.destTop,
 					// 	destRight: rect.destRight,
@@ -839,44 +835,52 @@
 					
 					// 验证矩形数据
 					if (!rect.data || rect.data.length === 0) {
+						console.error('[client.js] 矩形', index, '没有数据');
 						return;
 					}
 					
 					if (rect.width <= 0 || rect.height <= 0) {
+						console.error('[client.js] 矩形', index, '尺寸无效:', rect.width, 'x', rect.height);
 						return;
 					}
 					
 					if (rect.destRight < rect.destLeft || rect.destBottom < rect.destTop) {
+						console.error('[client.js] 矩形', index, '坐标无效');
 						return;
 					}
 					
 					// 后端已经解压缩，前端直接渲染
+					// console.log('[client.js] 矩形', index, '后端已解压缩，直接渲染');
 					
 					// 处理Base64编码的数据
 					var decodedData = null;
 					if (typeof rect.data === 'string') {
-						// 使用新的处理函数
-						decodedData = processBase64ImageData(rect.data, rect.width, rect.height);
-						if (decodedData === null) {
-							// 全黑数据，跳过渲染
+						// 如果是Base64字符串，解码为Uint8Array
+						// console.log('[client.js] 矩形', index, '检测到Base64编码数据，开始解码');
+						try {
+							// 将Base64字符串转换为二进制数据
+							var binaryString = atob(rect.data);
+							decodedData = new Uint8Array(binaryString.length);
+							for (var k = 0; k < binaryString.length; k++) {
+								decodedData[k] = binaryString.charCodeAt(k);
+							}
+							// console.log('[client.js] 矩形', index, 'Base64解码成功，解码后长度:', decodedData.length);
+						} catch (e) {
+							console.error('[client.js] 矩形', index, 'Base64解码失败:', e);
 							return;
 						}
 					} else {
 						// 如果不是字符串，直接使用原始数据
 						decodedData = rect.data;
-						
-						// 检查原始数据是否全黑
-						if (isAllBlackData(decodedData, 100)) {
-							console.warn('[client.js] ⚠️ 警告：原始数据全黑，跳过渲染');
-							return;
-						}
 					}
 					
 					// 验证数据长度是否正确（RGBA格式，4字节/像素）
 					var expectedDataLength = rect.width * rect.height * 4;
 					if (decodedData.length !== expectedDataLength) {
+						console.warn('[client.js] 矩形', index, '数据长度不匹配，期望:', expectedDataLength, '实际:', decodedData.length);
 						
 						// 添加详细的数据类型调试信息
+						// console.log('[client.js] 矩形', index, '数据类型详情:', {
 						// 	dataType: typeof decodedData,
 						// 	constructor: decodedData ? decodedData.constructor.name : 'undefined',
 						// 	isArray: Array.isArray(decodedData),
@@ -888,34 +892,43 @@
 						
 						// 如果数据长度不匹配，尝试调整
 						if (decodedData.length < expectedDataLength) {
+							console.error('[client.js] 矩形', index, '数据不足，跳过');
 							return;
 						}
 						// 如果数据过多，截断到正确长度
 						if (decodedData.length > expectedDataLength) {
+							console.warn('[client.js] 矩形', index, '数据过多，截断到正确长度');
 							// 修复：使用正确的方式截断数据，避免数据丢失
 							var originalData = decodedData;
 							var truncatedData = null;
 							
 							if (decodedData instanceof Uint8Array) {
+								// console.log('[client.js] 矩形', index, '处理Uint8Array类型数据');
 								truncatedData = decodedData.slice(0, expectedDataLength);
 							} else if (decodedData instanceof ArrayBuffer) {
+								// console.log('[client.js] 矩形', index, '处理ArrayBuffer类型数据');
 								truncatedData = decodedData.slice(0, expectedDataLength);
 							} else if (Array.isArray(decodedData)) {
+								// console.log('[client.js] 矩形', index, '处理Array类型数据');
 								truncatedData = decodedData.slice(0, expectedDataLength);
 							} else if (decodedData && typeof decodedData.slice === 'function') {
+								// console.log('[client.js] 矩形', index, '处理具有slice方法的数据');
 								truncatedData = decodedData.slice(0, expectedDataLength);
 							} else {
 								// 如果是其他类型的数据，尝试转换为Uint8Array
+								// console.log('[client.js] 矩形', index, '尝试转换为Uint8Array');
 								try {
 									var tempArray = new Uint8Array(decodedData);
 									truncatedData = tempArray.slice(0, expectedDataLength);
 								} catch (e) {
+									console.error('[client.js] 矩形', index, '无法处理数据类型:', typeof decodedData, '错误:', e);
 									return;
 								}
 							}
 							
 							// 验证截断结果
 							if (truncatedData && truncatedData.length === expectedDataLength) {
+								// console.log('[client.js] 矩形', index, '数据截断成功:', {
 								// 	originalLength: originalData.length,
 								// 	truncatedLength: truncatedData.length,
 								// 	expectedLength: expectedDataLength,
@@ -923,12 +936,12 @@
 								// });
 								decodedData = truncatedData;
 							} else {
-									// console.log('检查连接状态:', {
-									// 	truncatedData: !!truncatedData,
-									// 	truncatedLength: truncatedData ? truncatedData.length : 'undefined',
-									// 	expectedLength: expectedDataLength
-									// });
-									return;
+								console.error('[client.js] 矩形', index, '数据截断失败:', {
+									truncatedData: !!truncatedData,
+									truncatedLength: truncatedData ? truncatedData.length : 'undefined',
+									expectedLength: expectedDataLength
+								});
+								return;
 							}
 						}
 					}
@@ -946,21 +959,33 @@
 						data: decodedData
 					};
 					
+					// console.log('[client.js] 准备调用canvas.render.update()处理矩形', index);
 					try {
 						this.render.update(processedRect);
+						// console.log('[client.js] 矩形', index, 'canvas渲染调用完成');
 					} catch (e) {
+						console.error('[client.js] 矩形', index, 'canvas渲染失败:', e);
+						console.error('[client.js] 错误堆栈:', e.stack);
 					}
 				}.bind(this));
 				
+				// console.log('[client.js] 所有矩形处理完成');
 			} else {
+				console.warn('[client.js] 没有矩形数据或格式无效');
+				// console.log('[client.js] message.data内容:', message.data);
 				
 				// 兼容单个位图对象的情况
 				try {
+					// console.log('[client.js] 尝试处理单个bitmap对象');
 					this.render.update(message.data);
+					// console.log('[client.js] 单个bitmap对象处理完成');
 				} catch (e) {
+					console.error('[client.js] 单个bitmap对象处理失败:', e);
+					console.error('[client.js] 错误堆栈:', e.stack);
 				}
 			}
 			
+			// console.log('=== [client.js] handleBitmapMessage 处理完成 ===');
 		},
 		
 		/**
@@ -969,20 +994,23 @@
 		checkAndFixConnection : function() {
 			var self = this;
 			
-				// console.log('检查连接状态:', {
-				// 	hasSocket: !!this.socket,
-				// 	socketState: this.socket ? this.socket.readyState : 'no socket',
-				// 	activeSession: this.activeSession,
-				// 	windowWs: typeof window.ws,
-				// 	windowWsState: window.ws ? window.ws.readyState : 'undefined'
-				// });
+			console.log('[client.js] 检查连接状态:', {
+				hasSocket: !!this.socket,
+				socketState: this.socket ? this.socket.readyState : 'no socket',
+				activeSession: this.activeSession,
+				windowWs: typeof window.ws,
+				windowWsState: window.ws ? window.ws.readyState : 'undefined'
+			});
 			
 			// 如果socket不存在或已关闭，尝试重新获取
 			if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+				console.log('[client.js] Socket状态异常，尝试重新获取');
 				if (typeof window.ws !== 'undefined' && window.ws && window.ws.readyState === WebSocket.OPEN) {
+					console.log('[client.js] 找到可用的WebSocket连接，重新设置');
 					this.socket = window.ws;
 					return true;
 				} else {
+					console.warn('[client.js] 没有可用的WebSocket连接');
 					return false;
 				}
 			}
@@ -994,7 +1022,9 @@
 		 * 强制激活会话（用于调试）
 		 */
 		forceActivateSession : function() {
+			console.log('[client.js] 强制激活会话');
 			this.activeSession = true;
+			console.log('[client.js] activeSession已设置为true');
 		},
 		
 		/**
@@ -1014,9 +1044,12 @@
 				
 				try {
 					this.socket.send(JSON.stringify(msg));
+					console.log('[client.js] 分辨率信息已发送:', msg.data);
 				} catch (error) {
+					console.error('[client.js] 分辨率信息发送失败:', error);
 				}
 			} else {
+				console.warn('[client.js] 无法发送分辨率信息，socket不可用');
 			}
 		}
 	}

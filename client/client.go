@@ -114,17 +114,12 @@ func (c *Client) OnReady(f func()) {
 }
 func (c *Client) OnBitmap(f func([]Bitmap)) {
 	f1 := func(data interface{}) {
-		glog.Debug("OnBitmap: 开始处理位图数据")
 		bs := make([]Bitmap, 0, 50)
 
 		if c.tc == TC_VNC {
-			glog.Debug("OnBitmap: 处理VNC协议位图数据")
 			br := data.(*rfb.BitRect)
-			glog.Debugf("OnBitmap: VNC位图信息 - 像素格式: %d位, 矩形数量: %d", br.Pf.BitsPerPixel, len(br.Rects))
 
 			for i, v := range br.Rects {
-				glog.Debugf("OnBitmap: 处理VNC矩形[%d] - 位置(%d,%d) 尺寸(%dx%d) 数据长度:%d",
-					i, v.Rect.X, v.Rect.Y, v.Rect.Width, v.Rect.Height, len(v.Data))
 
 				b := Bitmap{
 					DestLeft:     int(v.Rect.X),
@@ -140,34 +135,25 @@ func (c *Client) OnBitmap(f func([]Bitmap)) {
 				bs = append(bs, b)
 			}
 		} else {
-			glog.Debug("OnBitmap: 处理RDP协议位图数据")
 			bitmapDataList := data.([]pdu.BitmapData)
-			glog.Debugf("OnBitmap: RDP位图数据数量: %d", len(bitmapDataList))
 
 			for i, v := range bitmapDataList {
-				glog.Debugf("OnBitmap: 处理RDP位图[%d] - 位置(%d,%d,%d,%d) 尺寸(%dx%d) BPP:%d",
-					i, v.DestLeft, v.DestTop, v.DestRight, v.DestBottom, v.Width, v.Height, v.BitsPerPixel)
 
 				IsCompress := v.IsCompress()
 				stream := v.BitmapDataStream
 				originalDataSize := len(stream)
 
-				glog.Debugf("OnBitmap: RDP位图[%d] - 压缩状态:%v 原始数据大小:%d", i, IsCompress, originalDataSize)
-
 				// 无论DecompressOnBackend设置如何，都需要转换为RGBA格式
 				// 如果后端解压缩，直接解压缩并转换
 				// 如果前端解压缩，也需要先转换为RGBA格式
 				if IsCompress && c.setting.DecompressOnBackend {
-					glog.Debugf("OnBitmap: 在后端解压缩RDP位图[%d]", i)
 					stream = bitmapDecompress(&v)
 					IsCompress = false
-					glog.Debugf("OnBitmap: RDP位图[%d]解压缩完成 - 解压后大小:%d", i, len(stream))
 				}
 
 				// 转换为RGBA格式（无论是否压缩）
 				rgbaData := convertToRGBA(&v, stream, IsCompress)
 				if rgbaData == nil {
-					glog.Warnf("OnBitmap: RDP位图[%d]转换为RGBA失败，跳过", i)
 					continue
 				}
 
@@ -186,7 +172,6 @@ func (c *Client) OnBitmap(f func([]Bitmap)) {
 			}
 		}
 
-		glog.Debugf("OnBitmap: 位图处理完成，共处理 %d 个位图", len(bs))
 		f(bs)
 	}
 
@@ -287,7 +272,6 @@ func convertToRGBA(bitmap *pdu.BitmapData, data []byte, isCompressed bool) []byt
 	case 32:
 		convert32ToRGBA(data, rgbaData, int(bitmap.Width), int(bitmap.Height))
 	default:
-		glog.Warnf("convertToRGBA: 不支持的位深度: %d", bitmap.BitsPerPixel)
 		return nil
 	}
 
@@ -304,9 +288,10 @@ func convert15ToRGBA(src []byte, dst []byte, width, height int) {
 			}
 			// RDP使用小端序，所以低字节在前
 			val := uint16(src[i*2]) | uint16(src[i*2+1])<<8
-			r := uint8((val&0x7c00)>>10) * 255 / 31
-			g := uint8((val&0x03e0)>>5) * 255 / 31
-			b := uint8(val&0x001f) * 255 / 31
+			// 使用与core/io.go中RGB555ToRGB函数相同的转换方式
+			r := uint8(val & 0x7C00 >> 7) // 5 bits red -> 8 bits
+			g := uint8(val & 0x03E0 >> 2) // 5 bits green -> 8 bits
+			b := uint8(val & 0x001F << 3) // 5 bits blue -> 8 bits
 			// RGBA顺序
 			dst[i*4+0] = r
 			dst[i*4+1] = g
@@ -325,9 +310,10 @@ func convert16ToRGBA(src []byte, dst []byte, width, height int) {
 			}
 			// RDP使用小端序，所以低字节在前
 			val := uint16(src[i*2]) | uint16(src[i*2+1])<<8
-			r := uint8((val&0xf800)>>11) * 255 / 31
-			g := uint8((val&0x07e0)>>5) * 255 / 63
-			b := uint8(val&0x001f) * 255 / 31
+			// 使用与core/io.go中RGB565ToRGB函数相同的转换方式
+			r := uint8(val & 0xF800 >> 8) // 5 bits red -> 8 bits
+			g := uint8(val & 0x07E0 >> 3) // 6 bits green -> 8 bits
+			b := uint8(val & 0x001F << 3) // 5 bits blue -> 8 bits
 			// RGBA顺序
 			dst[i*4+0] = r
 			dst[i*4+1] = g

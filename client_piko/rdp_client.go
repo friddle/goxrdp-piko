@@ -53,6 +53,9 @@ type RdpClient struct {
 	// 刷新操作相关字段
 	lastFlushTime time.Time
 	flushMutex    sync.Mutex
+	// 鼠标按键状态跟踪
+	mouseButtonStates map[int]bool // 跟踪每个按键的状态
+	mouseMutex        sync.Mutex   // 保护鼠标状态访问
 }
 
 func NewRdpClient(host, user, password string, width, height int, webServer *WebServer) *RdpClient {
@@ -60,19 +63,20 @@ func NewRdpClient(host, user, password string, width, height int, webServer *Web
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &RdpClient{
-		Host:          host,
-		Width:         width,
-		Height:        height,
-		User:          username,
-		Password:      password,
-		Domain:        domain,
-		ctx:           ctx,
-		cancel:        cancel,
-		webServer:     webServer,
-		autoReconnect: true,            // 默认启用自动重连
-		maxRetries:    5,               // 最大重试次数
-		retryDelay:    3 * time.Second, // 重试延迟
-		reconnectChan: make(chan bool, 1),
+		Host:              host,
+		Width:             width,
+		Height:            height,
+		User:              username,
+		Password:          password,
+		Domain:            domain,
+		ctx:               ctx,
+		cancel:            cancel,
+		webServer:         webServer,
+		autoReconnect:     true,            // 默认启用自动重连
+		maxRetries:        5,               // 最大重试次数
+		retryDelay:        3 * time.Second, // 重试延迟
+		reconnectChan:     make(chan bool, 1),
+		mouseButtonStates: make(map[int]bool),
 	}
 
 	// 创建位图处理器，默认在后端解压缩
@@ -275,7 +279,6 @@ func (c *RdpClient) Connect() error {
 			c.connected = true
 			connected <- true
 		}).On("bitmap", func(rectangles []pdu.BitmapData) {
-			glog.Debug("Update Bitmap:", len(rectangles))
 			c.HandleBitmapUpdate(rectangles)
 		})
 
@@ -297,7 +300,6 @@ func (c *RdpClient) Connect() error {
 			// 连接成功后发送测试bitmap事件
 			go func() {
 				time.Sleep(2 * time.Second) // 等待2秒后发送测试事件
-				glog.Info("发送测试bitmap事件")
 				testRectangles := []pdu.BitmapData{
 					{
 						DestLeft:         0,
@@ -330,14 +332,34 @@ func (c *RdpClient) Connect() error {
 	return c.SimpleConnect()
 }
 
-func (c *RdpClient) Disconnect() {
-	if c.tpkt != nil {
-		c.tpkt.Close()
+// resetMouseStates 重置鼠标按键状态
+func (c *RdpClient) resetMouseStates() {
+	c.mouseMutex.Lock()
+	defer c.mouseMutex.Unlock()
+
+	// 清空所有按键状态
+	for button := range c.mouseButtonStates {
+		c.mouseButtonStates[button] = false
 	}
+	glog.Info("鼠标按键状态已重置")
+}
+
+// Disconnect 断开RDP连接
+func (c *RdpClient) Disconnect() {
 	c.connected = false
+
+	// 重置鼠标状态
+	c.resetMouseStates()
+
 	if c.cancel != nil {
 		c.cancel()
 	}
+
+	if c.tpkt != nil {
+		c.tpkt.Close()
+	}
+
+	glog.Info("RDP连接已断开")
 }
 
 func (c *RdpClient) TestConnection() error {
@@ -449,7 +471,6 @@ func (c *RdpClient) SimpleConnect() error {
 		c.connected = true
 		connected <- true
 	}).On("bitmap", func(rectangles []pdu.BitmapData) {
-		glog.Debug("Update Bitmap:", len(rectangles))
 		c.HandleBitmapUpdate(rectangles)
 	})
 
@@ -469,7 +490,6 @@ func (c *RdpClient) SimpleConnect() error {
 		// 连接成功后发送测试bitmap事件
 		go func() {
 			time.Sleep(2 * time.Second) // 等待2秒后发送测试事件
-			glog.Info("发送测试bitmap事件")
 			testRectangles := []pdu.BitmapData{
 				{
 					DestLeft:         0,
@@ -646,10 +666,48 @@ func (c *RdpClient) SendMouseEvent(x, y, button int, pressed bool) {
 		return
 	}
 
+	// 添加调试日志
+	glog.Debug("SendMouseEvent调用",
+		zap.Int("x", x),
+		zap.Int("y", y),
+		zap.Int("button", button),
+		zap.Bool("pressed", pressed),
+		zap.String("buttonName", getMouseButtonName(button)))
+
+	// 使用鼠标按键状态来正确区分事件类型
+	c.mouseMutex.Lock()
+	defer c.mouseMutex.Unlock()
+
+	// 更新按钮状态
 	if pressed {
-		c.MouseDown(button, x, y)
+		c.mouseButtonStates[button] = true
 	} else {
+		c.mouseButtonStates[button] = false
+	}
+
+	// 检查是否有任何按键被按下
+	anyButtonPressed := false
+	for _, isPressed := range c.mouseButtonStates {
+		if isPressed {
+			anyButtonPressed = true
+			break
+		}
+	}
+
+	if pressed {
+		// 按键按下事件
+		c.MouseDown(button, x, y)
+		glog.Debug("处理为按键按下事件")
+	} else {
+		// 按键释放事件
 		c.MouseUp(button, x, y)
+		glog.Debug("处理为按键释放事件")
+
+		// 如果没有按键被按下，发送一个鼠标移动事件来确保状态同步
+		if !anyButtonPressed {
+			c.MouseMove(x, y)
+			glog.Debug("发送鼠标移动事件确保状态同步")
+		}
 	}
 }
 

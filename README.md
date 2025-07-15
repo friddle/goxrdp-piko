@@ -82,18 +82,6 @@ chmod +x ./goxrdp
 ./goxrdp --name=windows-server --remote=192.168.1.100:8088 --auto-exit=false
 ```
 
-#### macOS Client
-
-```bash
-# Download client
-curl -L -o goxrdp https://github.com/friddle/grdp/releases/download/v1.0.1/goxrdp-darwin-amd64
-chmod +x ./goxrdp
-
-# Connect to Windows RDP server
-./goxrdp --name=windows-server --remote=192.168.1.100:8088 \
-  --xrdp-host=192.168.1.200 \
-  --xrdp-user=Administrator
-```
 
 ![Client Startup Screenshot](screenshot/start_cli.png)
 ![Web Remote Desktop Screenshot](screenshot/webui.png)
