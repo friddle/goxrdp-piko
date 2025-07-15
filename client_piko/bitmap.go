@@ -243,7 +243,8 @@ func (bp *BitmapProcessor) detectBlackBitmap(index int, rect pdu.BitmapData) {
 		sampleCount++
 	}
 
-	if allZero {
+	// 修复：添加更严格的检测条件
+	if allZero && len(rect.BitmapDataStream) > 10 {
 		glog.Warn("⚠️ 检测到全黑位图数据！矩形", index, "详情:", map[string]interface{}{
 			"destLeft":     rect.DestLeft,
 			"destTop":      rect.DestTop,
@@ -263,6 +264,9 @@ func (bp *BitmapProcessor) detectBlackBitmap(index int, rect pdu.BitmapData) {
 			previewBytes = append(previewBytes, fmt.Sprintf("0x%02x", rect.BitmapDataStream[j]))
 		}
 		glog.Warn("矩形", index, "全黑数据预览:", strings.Join(previewBytes, ", "))
+
+		// 修复：对于全0数据，建议跳过处理或使用默认颜色
+		glog.Warn("矩形", index, "建议：跳过全0数据或使用默认颜色填充")
 	}
 }
 
@@ -413,9 +417,27 @@ func (bp *BitmapProcessor) decompressBitmapData(index int, rect pdu.BitmapData, 
 
 	if !result {
 		glog.Error("矩形", index, "RLE解压缩失败")
-		// 解压缩失败，尝试作为未压缩数据处理
-		// debugLogSimple("矩形", index, "解压缩失败，尝试作为未压缩数据处理")
-		return bp.convertUncompressedData(index, rect, targetWidth, targetHeight, expectedUncompressedSize, expectedRGBASize)
+		// 修复：解压缩失败时，尝试更安全的处理方式
+		glog.Warn("矩形", index, "尝试使用安全模式处理数据")
+
+		// 检查原始数据是否可能已经是未压缩格式
+		if len(rect.BitmapDataStream) >= expectedUncompressedSize {
+			glog.Warn("矩形", index, "数据长度符合未压缩格式，尝试直接转换")
+			return bp.convertUncompressedData(index, rect, targetWidth, targetHeight, expectedUncompressedSize, expectedRGBASize)
+		} else {
+			// 数据长度不足，创建默认颜色的输出
+			glog.Warn("矩形", index, "数据长度不足，创建默认颜色输出")
+			defaultOutput := make([]byte, expectedRGBASize)
+			for i := 0; i < len(defaultOutput); i += 4 {
+				if i+3 < len(defaultOutput) {
+					defaultOutput[i] = 128   // R (默认灰色)
+					defaultOutput[i+1] = 128 // G
+					defaultOutput[i+2] = 128 // B
+					defaultOutput[i+3] = 255 // A (不透明)
+				}
+			}
+			return defaultOutput
+		}
 	}
 
 	// debugLogSimple("矩形", index, "RLE解压缩成功，解压后大小:", len(decompressedData))
@@ -434,16 +456,15 @@ func (bp *BitmapProcessor) convertUncompressedData(index int, rect pdu.BitmapDat
 
 		// 如果数据长度不匹配，尝试调整
 		if len(rect.BitmapDataStream) < expectedUncompressedSize {
-			glog.Warn("矩形", index, "数据不足，使用重复模式填充")
-			// 使用重复模式填充，而不是用0填充
+			glog.Warn("矩形", index, "数据不足，使用默认颜色填充")
+			// 修复：使用默认颜色填充，而不是重复原始数据
 			paddedData := make([]byte, expectedUncompressedSize)
 			copy(paddedData, rect.BitmapDataStream)
 
-			// 重复原始数据来填充剩余部分
-			repeatIndex := 0
+			// 使用默认颜色填充剩余部分（灰色，避免黑色方块）
+			defaultColor := byte(128) // 中等灰色
 			for j := len(rect.BitmapDataStream); j < expectedUncompressedSize; j++ {
-				paddedData[j] = rect.BitmapDataStream[repeatIndex%len(rect.BitmapDataStream)]
-				repeatIndex++
+				paddedData[j] = defaultColor
 			}
 			rect.BitmapDataStream = paddedData
 		}
@@ -533,6 +554,16 @@ func convert15ToRGBA(src []byte, dst []byte, width, height int) {
 		return
 	}
 
+	// 修复：初始化输出缓冲区为透明黑色，避免未初始化像素显示为黑色方块
+	for i := 0; i < len(dst); i += 4 {
+		if i+3 < len(dst) {
+			dst[i] = 0   // R
+			dst[i+1] = 0 // G
+			dst[i+2] = 0 // B
+			dst[i+3] = 0 // A (透明)
+		}
+	}
+
 	// 显示输入数据的前几个字节用于调试
 	if GetIsDebug() && len(src) > 0 {
 		previewBytes := make([]string, 0)
@@ -555,6 +586,13 @@ func convert15ToRGBA(src []byte, dst []byte, width, height int) {
 		for x := 0; x < width; x++ {
 			i := y*width + x
 			if i*2+1 >= len(src) || i*4+3 >= len(dst) {
+				// 修复：超出边界时使用默认颜色，而不是跳过
+				if i*4+3 < len(dst) {
+					dst[i*4+0] = 128 // R (默认灰色)
+					dst[i*4+1] = 128 // G
+					dst[i*4+2] = 128 // B
+					dst[i*4+3] = 255 // A (不透明)
+				}
 				continue
 			}
 
