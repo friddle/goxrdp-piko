@@ -2,3 +2,5 @@
 .vscode/
 run_local.sh
 dist/
+**/.remote_config
+**/.remote_config.json

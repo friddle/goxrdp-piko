@@ -33,14 +33,30 @@ type ServiceManager struct {
 func NewServiceManager(config *Config) *ServiceManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// 创建日志记录器
-	logger, err := zap.NewDevelopment()
-	if err != nil {
-		// 如果创建开发环境日志记录器失败，使用生产环境配置
-		logger, err = zap.NewProduction()
+	// 根据环境变量决定日志配置
+	buildEnv := os.Getenv("BUILD_ENV")
+	var logger *zap.Logger
+	var err error
+
+	if buildEnv == "prod" || buildEnv == "production" {
+		// 生产环境：使用生产环境配置，只打印 Warning 及以上级别
+		config := zap.NewProductionConfig()
+		config.Level = zap.NewAtomicLevelAt(zap.WarnLevel)
+		logger, err = config.Build()
 		if err != nil {
-			// 如果连生产环境配置也失败，使用 NopLogger（空操作日志记录器）
+			// 如果创建生产环境日志记录器失败，使用 NopLogger
 			logger = zap.NewNop()
+		}
+	} else {
+		// 开发环境：使用开发环境配置
+		logger, err = zap.NewDevelopment()
+		if err != nil {
+			// 如果创建开发环境日志记录器失败，使用生产环境配置
+			logger, err = zap.NewProduction()
+			if err != nil {
+				// 如果连生产环境配置也失败，使用 NopLogger（空操作日志记录器）
+				logger = zap.NewNop()
+			}
 		}
 	}
 
@@ -263,4 +279,9 @@ func (sm *ServiceManager) startPiko() error {
 
 	fmt.Printf("启动piko结束\n")
 	return nil
+}
+
+// GetLogger 获取日志记录器
+func (sm *ServiceManager) GetLogger() *zap.Logger {
+	return sm.logger
 }

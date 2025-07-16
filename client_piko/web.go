@@ -170,7 +170,7 @@ func (ws *WebServer) Start(ctx context.Context) error {
 
 	fs := http.FileServer(http.FS(webFS))
 	router.HandleFunc(staticPrefix+"/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, staticPrefix+"/html/index.html", http.StatusFound)
+		http.Redirect(w, r, staticPrefix+"/html/", http.StatusFound)
 	})
 
 	// API路由 - 在基础路由下，必须在静态文件服务之前
@@ -189,9 +189,6 @@ func (ws *WebServer) Start(ctx context.Context) error {
 
 	// WebSocket连接处理
 	router.HandleFunc(staticPrefix+"/html/ws", ws.handleWebSocket)
-
-	// 默认页面 - 渲染index.html，不跳转（放在静态文件路由之前）
-	router.HandleFunc(staticPrefix+"/", ws.handleIndexPage)
 
 	// 根路径的静态文件路由（如果没有前缀，放在带前缀的静态文件路由之前）
 	if ws.config.Name == "" {
@@ -241,34 +238,6 @@ func (ws *WebServer) Start(ctx context.Context) error {
 
 	ws.logger.Info("Web服务器已关闭")
 	return nil
-}
-
-// handleIndexPage 处理默认页面，渲染index.html
-func (ws *WebServer) handleIndexPage(w http.ResponseWriter, r *http.Request) {
-	// 读取index.html文件
-	content, err := webFiles.ReadFile("web/html/index.html")
-	if err != nil {
-		ws.logger.Error("读取index.html失败", zap.Error(err))
-		http.Error(w, "页面加载失败", http.StatusInternalServerError)
-		return
-	}
-
-	// 如果有前缀，替换资源路径
-	if ws.config.Name != "" {
-		prefix := "/" + ws.config.Name
-		contentStr := string(content)
-		// 替换相对路径为带前缀的路径
-		contentStr = strings.ReplaceAll(contentStr, `href="./`, fmt.Sprintf(`href="%s/`, prefix))
-		contentStr = strings.ReplaceAll(contentStr, `src="./`, fmt.Sprintf(`src="%s/`, prefix))
-		// 处理../开头的路径
-		contentStr = strings.ReplaceAll(contentStr, `href="../`, fmt.Sprintf(`href="%s/`, prefix))
-		contentStr = strings.ReplaceAll(contentStr, `src="../`, fmt.Sprintf(`src="%s/`, prefix))
-		content = []byte(contentStr)
-	}
-
-	// 设置内容类型
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(content)
 }
 
 // handleWebSocket 处理WebSocket连接
