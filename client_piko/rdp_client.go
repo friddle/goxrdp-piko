@@ -674,26 +674,7 @@ func (c *RdpClient) SendMouseEvent(x, y, button int, pressed bool) {
 		zap.Bool("pressed", pressed),
 		zap.String("buttonName", getMouseButtonName(button)))
 
-	// 使用鼠标按键状态来正确区分事件类型
-	c.mouseMutex.Lock()
-	defer c.mouseMutex.Unlock()
-
-	// 更新按钮状态
-	if pressed {
-		c.mouseButtonStates[button] = true
-	} else {
-		c.mouseButtonStates[button] = false
-	}
-
-	// 检查是否有任何按键被按下
-	anyButtonPressed := false
-	for _, isPressed := range c.mouseButtonStates {
-		if isPressed {
-			anyButtonPressed = true
-			break
-		}
-	}
-
+	// 简化：直接处理鼠标事件，让RDP协议层处理拖拽逻辑
 	if pressed {
 		// 按键按下事件
 		c.MouseDown(button, x, y)
@@ -702,12 +683,6 @@ func (c *RdpClient) SendMouseEvent(x, y, button int, pressed bool) {
 		// 按键释放事件
 		c.MouseUp(button, x, y)
 		glog.Debug("处理为按键释放事件")
-
-		// 如果没有按键被按下，发送一个鼠标移动事件来确保状态同步
-		if !anyButtonPressed {
-			c.MouseMove(x, y)
-			glog.Debug("发送鼠标移动事件确保状态同步")
-		}
 	}
 }
 
@@ -781,16 +756,17 @@ func (c *RdpClient) MouseUp(button int, x, y int) {
 		zap.Int("y", y),
 		zap.String("buttonName", getMouseButtonName(button)))
 
+	// 使用标准RDP协议按钮编号
 	switch button {
-	case 0:
+	case 0: // 左键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON1
-		glog.Info("设置PTRFLAGS_BUTTON1 (左键)")
-	case 2:
-		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
-		glog.Info("设置PTRFLAGS_BUTTON2 (右键)")
-	case 1:
+		glog.Info("设置PTRFLAGS_BUTTON1 (左键释放)")
+	case 1: // 中键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON3
-		glog.Info("设置PTRFLAGS_BUTTON3 (中键)")
+		glog.Info("设置PTRFLAGS_BUTTON3 (中键释放)")
+	case 2: // 右键
+		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
+		glog.Info("设置PTRFLAGS_BUTTON2 (右键释放)")
 	default:
 		p.PointerFlags |= pdu.PTRFLAGS_MOVE
 		glog.Warn("未知按钮，设置为移动事件")
@@ -798,6 +774,14 @@ func (c *RdpClient) MouseUp(button int, x, y int) {
 
 	p.XPos = uint16(x)
 	p.YPos = uint16(y)
+
+	// 添加详细的调试日志
+	glog.Info("发送MouseUp事件到RDP服务器",
+		zap.Uint16("PointerFlags", p.PointerFlags),
+		zap.Uint16("XPos", p.XPos),
+		zap.Uint16("YPos", p.YPos),
+		zap.String("flagsHex", fmt.Sprintf("0x%04X", p.PointerFlags)))
+
 	c.pdu.SendInputEvents(pdu.INPUT_EVENT_MOUSE, []pdu.InputEventsInterface{p})
 }
 
@@ -809,6 +793,7 @@ func (c *RdpClient) MouseDown(button int, x, y int) {
 
 	p := &pdu.PointerEvent{}
 
+	// 设置按下标志
 	p.PointerFlags |= pdu.PTRFLAGS_DOWN
 
 	// 添加调试日志
@@ -818,16 +803,17 @@ func (c *RdpClient) MouseDown(button int, x, y int) {
 		zap.Int("y", y),
 		zap.String("buttonName", getMouseButtonName(button)))
 
+	// 使用标准RDP协议按钮编号
 	switch button {
-	case 0:
+	case 0: // 左键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON1
-		glog.Info("设置PTRFLAGS_BUTTON1 (左键)")
-	case 2:
-		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
-		glog.Info("设置PTRFLAGS_BUTTON2 (右键)")
-	case 1:
+		glog.Info("设置PTRFLAGS_BUTTON1 (左键按下)")
+	case 1: // 中键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON3
-		glog.Info("设置PTRFLAGS_BUTTON3 (中键)")
+		glog.Info("设置PTRFLAGS_BUTTON3 (中键按下)")
+	case 2: // 右键
+		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
+		glog.Info("设置PTRFLAGS_BUTTON2 (右键按下)")
 	default:
 		p.PointerFlags |= pdu.PTRFLAGS_MOVE
 		glog.Warn("未知按钮，设置为移动事件")
@@ -835,6 +821,14 @@ func (c *RdpClient) MouseDown(button int, x, y int) {
 
 	p.XPos = uint16(x)
 	p.YPos = uint16(y)
+
+	// 添加详细的调试日志
+	glog.Info("发送MouseDown事件到RDP服务器",
+		zap.Uint16("PointerFlags", p.PointerFlags),
+		zap.Uint16("XPos", p.XPos),
+		zap.Uint16("YPos", p.YPos),
+		zap.String("flagsHex", fmt.Sprintf("0x%04X", p.PointerFlags)))
+
 	c.pdu.SendInputEvents(pdu.INPUT_EVENT_MOUSE, []pdu.InputEventsInterface{p})
 }
 

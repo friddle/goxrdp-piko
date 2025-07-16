@@ -114,13 +114,14 @@ func (c *RdpClient) MouseWheel(scroll, x, y int) {
 func (c *RdpClient) MouseUp(button int, x, y int) {
 	p := &pdu.PointerEvent{}
 
+	// 使用标准RDP协议按钮编号
 	switch button {
-	case 0:
+	case 0: // 左键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON1
-	case 2:
-		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
-	case 1:
+	case 1: // 中键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON3
+	case 2: // 右键
+		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
 	default:
 		p.PointerFlags |= pdu.PTRFLAGS_MOVE
 	}
@@ -134,13 +135,14 @@ func (c *RdpClient) MouseDown(button int, x, y int) {
 
 	p.PointerFlags |= pdu.PTRFLAGS_DOWN
 
+	// 使用标准RDP协议按钮编号
 	switch button {
-	case 0:
+	case 0: // 左键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON1
-	case 2:
-		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
-	case 1:
+	case 1: // 中键
 		p.PointerFlags |= pdu.PTRFLAGS_BUTTON3
+	case 2: // 右键
+		p.PointerFlags |= pdu.PTRFLAGS_BUTTON2
 	default:
 		p.PointerFlags |= pdu.PTRFLAGS_MOVE
 	}

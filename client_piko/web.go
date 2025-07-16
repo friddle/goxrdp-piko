@@ -581,23 +581,16 @@ func (ws *WebServer) handleMouseMessage(conn *websocket.Conn, msg map[string]int
 		zap.Bool("pressed", pressed),
 		zap.String("buttonName", getButtonName(int(button))))
 
-	// 判断事件类型
-	if button == 0 && !pressed {
-		// 鼠标移动事件
-		rdpClient.MouseMove(int(x), int(y))
-		ws.logger.Debug("转发鼠标移动事件到RDP客户端",
-			zap.Int("x", int(x)),
-			zap.Int("y", int(y)))
-	} else {
-		// 鼠标按键事件
-		ws.logger.Info("转发鼠标按键事件到RDP客户端",
-			zap.Int("x", int(x)),
-			zap.Int("y", int(y)),
-			zap.Int("button", int(button)),
-			zap.Bool("pressed", pressed),
-			zap.String("buttonName", getButtonName(int(button))))
-		rdpClient.SendMouseEvent(int(x), int(y), int(button), pressed)
-	}
+	// 修复：正确处理所有鼠标事件
+	// 所有鼠标事件都应该转发到RDP客户端，包括按键按下、释放和移动
+	ws.logger.Info("转发鼠标事件到RDP客户端",
+		zap.Int("x", int(x)),
+		zap.Int("y", int(y)),
+		zap.Int("button", int(button)),
+		zap.Bool("pressed", pressed),
+		zap.String("buttonName", getButtonName(int(button))))
+
+	rdpClient.SendMouseEvent(int(x), int(y), int(button), pressed)
 }
 
 // getButtonName 获取按钮名称用于调试

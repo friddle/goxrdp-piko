@@ -23,9 +23,10 @@
 	 * @param button {integer} client button number
 	 */
 	function mouseButtonMap(button) {
-		// 修复：直接返回原始按钮编号，让后端处理映射
+		// 使用标准RDP协议按钮编号
 		// 浏览器按钮编号：0=左键，1=中键，2=右键
 		// RDP协议按钮编号：0=左键，1=中键，2=右键
+		// 直接透传，保持一致性
 		return button;
 	};
 	
@@ -128,15 +129,36 @@
 		
 		sampleCount = sampleCount || Math.min(100, data.length);
 		var allBlack = true;
+		var nonZeroCount = 0;
+		var totalChecked = 0;
 		
 		for (var i = 0; i < sampleCount; i += 4) { // 每4字节一个像素
 			if (i + 2 < data.length) {
+				totalChecked++;
 				// 检查RGB通道是否都为0（忽略Alpha通道）
 				if (data[i] !== 0 || data[i+1] !== 0 || data[i+2] !== 0) {
-					allBlack = false;
-					break;
+					nonZeroCount++;
+					// 如果发现非零像素，检查是否足够多
+					if (nonZeroCount > 10) { // 允许最多10个非零像素
+						allBlack = false;
+						break;
+					}
 				}
 			}
+		}
+		
+		// 添加调试信息
+		if (allBlack && totalChecked > 0) {
+			console.log('[client.js] 全黑检测详情:', {
+				totalChecked: totalChecked,
+				nonZeroCount: nonZeroCount,
+				allBlack: allBlack,
+				firstFewPixels: [
+					data[0], data[1], data[2], data[3],
+					data[4], data[5], data[6], data[7],
+					data[8], data[9], data[10], data[11]
+				]
+			});
 		}
 		
 		return allBlack;
@@ -153,6 +175,18 @@
 			for (var k = 0; k < binaryString.length; k++) {
 				decodedData[k] = binaryString.charCodeAt(k);
 			}
+			
+			// 添加调试信息
+			console.log('[client.js] Base64解码详情:', {
+				base64Length: base64Data.length,
+				binaryLength: binaryString.length,
+				decodedLength: decodedData.length,
+				expectedLength: width * height * 4,
+				firstFewBytes: [
+					decodedData[0], decodedData[1], decodedData[2], decodedData[3],
+					decodedData[4], decodedData[5], decodedData[6], decodedData[7]
+				]
+			});
 			
 			// 检测解码后的全黑数据
 			if (decodedData.length > 0 && isAllBlackData(decodedData, 100)) {
@@ -231,22 +265,12 @@
 				self.mouseState.lastX = pos.x;
 				self.mouseState.lastY = pos.y;
 				
-				// 修复：改进拖拽逻辑，只有左键才进行拖拽
-				if (self.mouseState.isDragging && isDragOperation(0, self.mouseState.pressedButtons)) {
-					// 左键拖拽时发送鼠标移动事件，保持按下状态
-					var mouseEvent = {
-						event: 'mouse',
-						data: [pos.x, pos.y, 0, true] // 左键按下状态
-					};
-					self.socket.send(JSON.stringify(mouseEvent));
-				} else {
-					// 普通移动事件或非左键拖拽
-					var mouseEvent = {
-						event: 'mouse',
-						data: [pos.x, pos.y, 0, false]
-					};
-					self.socket.send(JSON.stringify(mouseEvent));
-				}
+				// 简化：直接发送鼠标移动事件，让后端处理拖拽逻辑
+				var mouseEvent = {
+					event: 'mouse',
+					data: [pos.x, pos.y, 0, false] // 移动事件，按钮状态为false
+				};
+				self.socket.send(JSON.stringify(mouseEvent));
 				
 				e.preventDefault();
 				return false;
@@ -269,11 +293,8 @@
 				self.mouseState.pressedButtons.add(mappedButton);
 				self.mouseState.lastX = pos.x;
 				self.mouseState.lastY = pos.y;
-				// 修复：只有左键才设置拖拽状态
-				if (mappedButton === 0) {
-					self.mouseState.isDragging = true;
-				}
 				
+				// 简化：直接发送鼠标按下事件
 				var mouseEvent = {
 					event: 'mouse',
 					data: [pos.x, pos.y, mappedButton, true]
@@ -302,11 +323,8 @@
 				
 				// 更新鼠标状态
 				self.mouseState.pressedButtons.delete(mappedButton);
-				// 修复：只有左键释放时才清除拖拽状态
-				if (mappedButton === 0) {
-					self.mouseState.isDragging = false;
-				}
 				
+				// 简化：直接发送鼠标释放事件
 				var mouseEvent = {
 					event: 'mouse',
 					data: [pos.x, pos.y, mappedButton, false]
@@ -333,11 +351,8 @@
 				
 				// 更新鼠标状态
 				self.mouseState.pressedButtons.delete(mappedButton);
-				// 修复：只有左键释放时才清除拖拽状态
-				if (mappedButton === 0) {
-					self.mouseState.isDragging = false;
-				}
 				
+				// 简化：直接发送鼠标释放事件
 				var mouseEvent = {
 					event: 'mouse',
 					data: [pos.x, pos.y, mappedButton, false]

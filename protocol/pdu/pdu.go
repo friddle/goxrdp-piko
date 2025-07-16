@@ -8,6 +8,7 @@ import (
 	"github.com/friddle/grdp/emission"
 	"github.com/friddle/grdp/glog"
 	"github.com/friddle/grdp/protocol/t125/gcc"
+	"go.uber.org/zap"
 )
 
 type PDULayer struct {
@@ -449,10 +450,22 @@ func (c *Client) SendInputEvents(msgType uint16, events []InputEventsInterface) 
 	p := &ClientInputEventPDU{}
 	p.NumEvents = uint16(len(events))
 	p.SlowPathInputEvents = make([]SlowPathInputEvent, 0, p.NumEvents)
-	for _, in := range events {
+
+	// 添加调试日志
+	glog.Info("SendInputEvents调用",
+		zap.Uint16("msgType", msgType),
+		zap.Int("eventsCount", len(events)))
+
+	for i, in := range events {
 		seria := in.Serialize()
 		s := SlowPathInputEvent{0, msgType, len(seria), seria}
 		p.SlowPathInputEvents = append(p.SlowPathInputEvents, s)
+
+		// 添加详细的事件调试日志
+		glog.Info("事件序列化",
+			zap.Int("eventIndex", i),
+			zap.Int("serializedSize", len(seria)),
+			zap.String("serializedData", hex.EncodeToString(seria)))
 	}
 
 	c.sendDataPDU(p)

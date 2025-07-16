@@ -358,15 +358,15 @@ func convert32ToRGBA(src []byte, dst []byte, width, height int) {
 // getMouseButtonName 将鼠标按钮数字转换为可读的名称
 func getMouseButtonName(button int) string {
 	switch button {
-	case 1:
+	case 0:
 		return "左键"
-	case 2:
+	case 1:
 		return "中键"
-	case 3:
+	case 2:
 		return "右键"
-	case 4:
+	case 3:
 		return "侧键1"
-	case 5:
+	case 4:
 		return "侧键2"
 	default:
 		return fmt.Sprintf("未知按钮%d", button)

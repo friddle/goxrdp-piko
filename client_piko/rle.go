@@ -39,7 +39,7 @@ func BitmapDecompress15(output []byte, outputWidth, outputHeight, inputWidth, in
 			// 修复：RDP使用小端序，低字节在前
 			pixel := uint16(temp[pixelIdx]) | uint16(temp[pixelIdx+1])<<8
 
-			// 修复：使用与core/io.go中RGB555ToRGB函数相同的转换方式
+			// 修复：使用与core/io.go中RGB555ToRGB函数完全相同的转换方式
 			// RGB555: RRRRRGGGGGGBBBBB (bits 15-11, 10-6, 5-1, bit 0 unused)
 			r := uint8(pixel & 0x7C00 >> 7) // 5 bits red -> 8 bits
 			g := uint8(pixel & 0x03E0 >> 2) // 5 bits green -> 8 bits
@@ -75,7 +75,7 @@ func BitmapDecompress16(output []byte, outputWidth, outputHeight, inputWidth, in
 			// 修复：RDP使用小端序，低字节在前
 			pixel := uint16(temp[pixelIdx]) | uint16(temp[pixelIdx+1])<<8
 
-			// 修复：使用与core/io.go中RGB565ToRGB函数相同的转换方式
+			// 修复：使用与core/io.go中RGB565ToRGB函数完全相同的转换方式
 			// RGB565: RRRRRGGGGGGBBBBB (bits 15-11, 10-5, 4-0)
 			r := uint8(pixel & 0xF800 >> 8) // 5 bits red -> 8 bits
 			g := uint8(pixel & 0x07E0 >> 3) // 6 bits green -> 8 bits
@@ -156,118 +156,101 @@ func BitmapDecompress32(output []byte, outputWidth, outputHeight, inputWidth, in
 // bitmapDecompress2 decompresses 2 bytes per pixel bitmap data
 func bitmapDecompress2(output []byte, width, height int, input []byte) bool {
 	var (
-		lastopcode = -1
-		insertmix  = false
-		bicolour   = false
-		mask       byte
-		mixmask    byte
-		mix        uint16
-		fomMask    byte
-		colour1    uint16
-		colour2    uint16
-		code       byte
-		opcode     int
-		count      int
-		offset     int
-		x          = width
-		prevLine   []byte
-		line       []byte
+		prevline, line, count            int
+		offset, code                     int
+		x                                int = width
+		opcode                           int
+		lastopcode                       int = -1
+		insertmix, bicolour, isfillormix bool
+		mixmask, mask                    byte
+		colour1, colour2                 uint16
+		mix                              uint16 = 0xffff
+		fom_mask                         byte
 	)
 
-	inPtr := 0
-	for inPtr < len(input) {
-		fomMask = 0
-		code = input[inPtr]
-		inPtr++
-		opcode = int(code) >> 4
+	out := make([]uint16, width*height)
+	for len(input) != 0 {
+		fom_mask = 0
+		code = int(input[0])
+		input = input[1:]
+		opcode = code >> 4
 
 		// Handle different opcode forms
-		switch {
-		case opcode >= 0xc && opcode <= 0xe:
+		switch opcode {
+		case 0xc, 0xd, 0xe:
 			opcode -= 6
-			count = int(code) & 0xf
+			count = code & 0xf
 			offset = 16
-		case opcode == 0xf:
-			opcode = int(code) & 0xf
+		case 0xf:
+			opcode = code & 0xf
 			if opcode < 9 {
-				count = int(input[inPtr])
-				inPtr++
-				count |= int(input[inPtr]) << 8
-				inPtr++
+				count = int(input[0])
+				input = input[1:]
+				count |= int(input[0]) << 8
+				input = input[1:]
 			} else {
-				count = 8
-				if opcode >= 0xb {
-					count = 1
+				count = 1
+				if opcode < 0xb {
+					count = 8
 				}
 			}
 			offset = 0
 		default:
 			opcode >>= 1
-			count = int(code) & 0x1f
+			count = code & 0x1f
 			offset = 32
 		}
 
-		// Handle special cases for counts
+		// Handle strange cases for counts
 		if offset != 0 {
-			isfillormix := (opcode == 2) || (opcode == 7)
+			isfillormix = ((opcode == 2) || (opcode == 7))
 			if count == 0 {
 				if isfillormix {
-					count = int(input[inPtr]) + 1
-					inPtr++
+					count = int(input[0]) + 1
+					input = input[1:]
 				} else {
-					count = int(input[inPtr]) + offset
-					inPtr++
+					count = int(input[0]) + offset
+					input = input[1:]
 				}
 			} else if isfillormix {
 				count <<= 3
 			}
 		}
 
-		// Process opcodes
+		// Read preliminary data
 		switch opcode {
 		case 0: // Fill
-			if lastopcode == opcode && !(x == width && prevLine == nil) {
+			if (lastopcode == opcode) && !((x == width) && (prevline == 0)) {
 				insertmix = true
 			}
-
 		case 8: // Bicolour
-			if inPtr+2 > len(input) {
-				return false
-			}
-			colour1 = uint16(input[inPtr]) | uint16(input[inPtr+1])<<8
-			inPtr += 2
+			// 修复：使用正确的字节序读取16位值
+			colour1 = uint16(input[0]) | uint16(input[1])<<8
+			input = input[2:]
 			fallthrough
-
 		case 3: // Colour
-			if inPtr+2 > len(input) {
-				return false
-			}
-			colour2 = uint16(input[inPtr]) | uint16(input[inPtr+1])<<8
-			inPtr += 2
-
+			// 修复：使用正确的字节序读取16位值
+			colour2 = uint16(input[0]) | uint16(input[1])<<8
+			input = input[2:]
 		case 6, 7: // SetMix/Mix, SetMix/FillOrMix
-			if inPtr+2 > len(input) {
-				return false
-			}
-			mix = uint16(input[inPtr]) | uint16(input[inPtr+1])<<8
-			inPtr += 2
+			// 修复：使用正确的字节序读取16位值
+			mix = uint16(input[0]) | uint16(input[1])<<8
+			input = input[2:]
 			opcode -= 5
-
 		case 9: // FillOrMix_1
-			mask = fomMask1
-			opcode = 2
-			fomMask = fomMask1
-
-		case 0xa: // FillOrMix_2
-			mask = fomMask2
-			opcode = 2
-			fomMask = fomMask2
+			mask = 0x03
+			opcode = 0x02
+			fom_mask = 3
+		case 0x0a: // FillOrMix_2
+			mask = 0x05
+			opcode = 0x02
+			fom_mask = 5
 		}
 
 		lastopcode = opcode
 		mixmask = 0
 
-		// Output loop - 修复：实现与C代码REPEAT宏相同的逻辑
+		// Output body
 		for count > 0 {
 			if x >= width {
 				if height <= 0 {
@@ -275,455 +258,244 @@ func bitmapDecompress2(output []byte, width, height int, input []byte) bool {
 				}
 				x = 0
 				height--
-				prevLine = line
-				line = output[height*width*2 : (height+1)*width*2]
+				prevline = line
+				line = height * width
 			}
 
 			switch opcode {
 			case 0: // Fill
 				if insertmix {
-					if prevLine == nil {
-						// 写入mix值（2字节）
-						line[x*2] = byte(mix & 0xff)
-						line[x*2+1] = byte(mix >> 8)
+					if prevline == 0 {
+						out[x+line] = mix
 					} else {
-						// 读取前一行值并异或
-						prevVal := uint16(prevLine[x*2]) | uint16(prevLine[x*2+1])<<8
-						newVal := prevVal ^ mix
-						line[x*2] = byte(newVal & 0xff)
-						line[x*2+1] = byte(newVal >> 8)
+						out[x+line] = out[prevline+x] ^ mix
 					}
 					insertmix = false
 					count--
 					x++
-					continue
 				}
-
-				// 修复：实现REPEAT宏的逻辑
-				if prevLine == nil {
-					// REPEAT(line[x*2] = 0; line[x*2+1] = 0;)
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							line[(x+i)*2] = 0
-							line[(x+i)*2+1] = 0
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						line[x*2] = 0
-						line[x*2+1] = 0
-						count--
-						x++
-					}
+				if prevline == 0 {
+					REPEAT(func() {
+						out[x+line] = 0
+					}, &count, &x, width)
 				} else {
-					// REPEAT(copy(line[x*2:(x+1)*2], prevLine[x*2:(x+1)*2]))
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							line[(x+i)*2] = prevLine[(x+i)*2]
-							line[(x+i)*2+1] = prevLine[(x+i)*2+1]
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						line[x*2] = prevLine[x*2]
-						line[x*2+1] = prevLine[x*2+1]
-						count--
-						x++
-					}
+					REPEAT(func() {
+						out[x+line] = out[prevline+x]
+					}, &count, &x, width)
 				}
-
 			case 1: // Mix
-				// 修复：实现REPEAT宏的逻辑
-				if prevLine == nil {
-					// REPEAT(line[x*2] = mix & 0xff; line[x*2+1] = mix >> 8;)
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							line[(x+i)*2] = byte(mix & 0xff)
-							line[(x+i)*2+1] = byte(mix >> 8)
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						line[x*2] = byte(mix & 0xff)
-						line[x*2+1] = byte(mix >> 8)
-						count--
-						x++
-					}
+				if prevline == 0 {
+					REPEAT(func() {
+						out[x+line] = mix
+					}, &count, &x, width)
 				} else {
-					// REPEAT(prevVal = prevLine[x*2] | prevLine[x*2+1] << 8; newVal = prevVal ^ mix; line[x*2] = newVal & 0xff; line[x*2+1] = newVal >> 8;)
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							prevVal := uint16(prevLine[(x+i)*2]) | uint16(prevLine[(x+i)*2+1])<<8
-							newVal := prevVal ^ mix
-							line[(x+i)*2] = byte(newVal & 0xff)
-							line[(x+i)*2+1] = byte(newVal >> 8)
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						prevVal := uint16(prevLine[x*2]) | uint16(prevLine[x*2+1])<<8
-						newVal := prevVal ^ mix
-						line[x*2] = byte(newVal & 0xff)
-						line[x*2+1] = byte(newVal >> 8)
-						count--
-						x++
-					}
+					REPEAT(func() {
+						out[x+line] = out[prevline+x] ^ mix
+					}, &count, &x, width)
 				}
-
 			case 2: // Fill or Mix
-				// 修复：实现REPEAT宏的逻辑
-				if prevLine == nil {
-					// REPEAT(MASK_UPDATE(); if (mask & mixmask) { line[x*2] = mix & 0xff; line[x*2+1] = mix >> 8; } else { line[x*2] = 0; line[x*2+1] = 0; })
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							mixmask <<= 1
-							if mixmask == 0 {
-								if fomMask != 0 {
-									mask = fomMask
-								} else {
-									if inPtr >= len(input) {
-										return false
-									}
-									mask = input[inPtr]
-									inPtr++
-								}
-								mixmask = 1
-							}
-							if mask&mixmask != 0 {
-								line[(x+i)*2] = byte(mix & 0xff)
-								line[(x+i)*2+1] = byte(mix >> 8)
-							} else {
-								line[(x+i)*2] = 0
-								line[(x+i)*2+1] = 0
-							}
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
+				if prevline == 0 {
+					REPEAT(func() {
 						mixmask <<= 1
 						if mixmask == 0 {
-							if fomMask != 0 {
-								mask = fomMask
-							} else {
-								if inPtr >= len(input) {
-									return false
-								}
-								mask = input[inPtr]
-								inPtr++
+							mask = fom_mask
+							if fom_mask == 0 {
+								mask = input[0]
+								input = input[1:]
+								mixmask = 1
 							}
-							mixmask = 1
 						}
 						if mask&mixmask != 0 {
-							line[x*2] = byte(mix & 0xff)
-							line[x*2+1] = byte(mix >> 8)
+							out[x+line] = mix
 						} else {
-							line[x*2] = 0
-							line[x*2+1] = 0
+							out[x+line] = 0
 						}
-						count--
-						x++
-					}
+					}, &count, &x, width)
 				} else {
-					// REPEAT(MASK_UPDATE(); if (mask & mixmask) { prevVal = prevLine[x*2] | prevLine[x*2+1] << 8; newVal = prevVal ^ mix; line[x*2] = newVal & 0xff; line[x*2+1] = newVal >> 8; } else { line[x*2] = prevLine[x*2]; line[x*2+1] = prevLine[x*2+1]; })
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							mixmask <<= 1
-							if mixmask == 0 {
-								if fomMask != 0 {
-									mask = fomMask
-								} else {
-									if inPtr >= len(input) {
-										return false
-									}
-									mask = input[inPtr]
-									inPtr++
-								}
-								mixmask = 1
-							}
-							if mask&mixmask != 0 {
-								prevVal := uint16(prevLine[(x+i)*2]) | uint16(prevLine[(x+i)*2+1])<<8
-								newVal := prevVal ^ mix
-								line[(x+i)*2] = byte(newVal & 0xff)
-								line[(x+i)*2+1] = byte(newVal >> 8)
-							} else {
-								line[(x+i)*2] = prevLine[(x+i)*2]
-								line[(x+i)*2+1] = prevLine[(x+i)*2+1]
-							}
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
+					REPEAT(func() {
 						mixmask <<= 1
 						if mixmask == 0 {
-							if fomMask != 0 {
-								mask = fomMask
-							} else {
-								if inPtr >= len(input) {
-									return false
-								}
-								mask = input[inPtr]
-								inPtr++
+							mask = fom_mask
+							if fom_mask == 0 {
+								mask = input[0]
+								input = input[1:]
+								mixmask = 1
 							}
-							mixmask = 1
 						}
 						if mask&mixmask != 0 {
-							prevVal := uint16(prevLine[x*2]) | uint16(prevLine[x*2+1])<<8
-							newVal := prevVal ^ mix
-							line[x*2] = byte(newVal & 0xff)
-							line[x*2+1] = byte(newVal >> 8)
+							out[x+line] = out[prevline+x] ^ mix
 						} else {
-							line[x*2] = prevLine[x*2]
-							line[x*2+1] = prevLine[x*2+1]
+							out[x+line] = out[prevline+x]
 						}
-						count--
-						x++
-					}
+					}, &count, &x, width)
 				}
-
 			case 3: // Colour
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(line[x*2] = colour2 & 0xff; line[x*2+1] = colour2 >> 8;)
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						line[(x+i)*2] = byte(colour2 & 0xff)
-						line[(x+i)*2+1] = byte(colour2 >> 8)
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					line[x*2] = byte(colour2 & 0xff)
-					line[x*2+1] = byte(colour2 >> 8)
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					out[x+line] = colour2
+				}, &count, &x, width)
 			case 4: // Copy
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(line[x*2] = input[inPtr]; line[x*2+1] = input[inPtr+1]; inPtr += 2;)
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						if inPtr+2 > len(input) {
-							return false
-						}
-						line[(x+i)*2] = input[inPtr]
-						line[(x+i)*2+1] = input[inPtr+1]
-						inPtr += 2
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					if inPtr+2 > len(input) {
-						return false
-					}
-					line[x*2] = input[inPtr]
-					line[x*2+1] = input[inPtr+1]
-					inPtr += 2
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					// 修复：使用正确的字节序读取16位值
+					var val uint16
+					val = uint16(input[0]) | uint16(input[1])<<8
+					input = input[2:]
+					out[x+line] = val
+				}, &count, &x, width)
 			case 8: // Bicolour
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(if (bicolour) { line[x*2] = colour2 & 0xff; line[x*2+1] = colour2 >> 8; bicolour = false; } else { line[x*2] = colour1 & 0xff; line[x*2+1] = colour1 >> 8; bicolour = true; count++; })
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						if bicolour {
-							line[(x+i)*2] = byte(colour2 & 0xff)
-							line[(x+i)*2+1] = byte(colour2 >> 8)
-							bicolour = false
-						} else {
-							line[(x+i)*2] = byte(colour1 & 0xff)
-							line[(x+i)*2+1] = byte(colour1 >> 8)
-							bicolour = true
-							count++
-						}
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
+				REPEAT(func() {
 					if bicolour {
-						line[x*2] = byte(colour2 & 0xff)
-						line[x*2+1] = byte(colour2 >> 8)
+						out[x+line] = colour2
 						bicolour = false
 					} else {
-						line[x*2] = byte(colour1 & 0xff)
-						line[x*2+1] = byte(colour1 >> 8)
+						out[x+line] = colour1
 						bicolour = true
 						count++
 					}
-					count--
-					x++
-				}
-
+				}, &count, &x, width)
 			case 0xd: // White
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(line[x*2] = 0xff; line[x*2+1] = 0xff;)
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						line[(x+i)*2] = 0xff
-						line[(x+i)*2+1] = 0xff
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					line[x*2] = 0xff
-					line[x*2+1] = 0xff
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					out[x+line] = 0xffff
+				}, &count, &x, width)
 			case 0xe: // Black
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(line[x*2] = 0; line[x*2+1] = 0;)
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						line[(x+i)*2] = 0
-						line[(x+i)*2+1] = 0
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					line[x*2] = 0
-					line[x*2+1] = 0
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					out[x+line] = 0
+				}, &count, &x, width)
 			default:
+				fmt.Printf("bitmap opcode 0x%x\n", opcode)
 				return false
 			}
 		}
 	}
 
+	// 修复：将uint16数组转换为字节数组，使用正确的字节序
+	j := 0
+	for _, v := range out {
+		output[j] = byte(v & 0xff)
+		output[j+1] = byte(v >> 8)
+		j += 2
+	}
+
 	return true
+}
+
+// REPEAT macro implementation
+func REPEAT(f func(), count *int, x *int, width int) {
+	for (*count & ^0x7) != 0 && ((*x + 8) < width) {
+		for i := 0; i < 8; i++ {
+			f()
+			*count = *count - 1
+			*x = *x + 1
+		}
+	}
+
+	for (*count > 0) && (*x < width) {
+		f()
+		*count = *count - 1
+		*x = *x + 1
+	}
 }
 
 // bitmapDecompress3 decompresses 3 bytes per pixel bitmap data
 func bitmapDecompress3(output []byte, width, height int, input []byte) bool {
 	var (
-		lastopcode = -1
-		insertmix  = false
-		bicolour   = false
-		mask       byte
-		mixmask    byte
-		mix        = [3]byte{0xff, 0xff, 0xff}
-		fomMask    byte
-		colour1    = [3]byte{0, 0, 0}
-		colour2    = [3]byte{0, 0, 0}
-		code       byte
-		opcode     int
-		count      int
-		offset     int
-		x          = width
-		prevLine   []byte
-		line       []byte
+		prevline, line, count            int
+		opcode, offset, code             int
+		x                                int = width
+		lastopcode                       int = -1
+		insertmix, bicolour, isfillormix bool
+		mixmask, mask                    byte
+		colour1                          = [3]byte{0, 0, 0}
+		colour2                          = [3]byte{0, 0, 0}
+		mix                              = [3]byte{0xff, 0xff, 0xff}
+		fom_mask                         byte
 	)
 
-	inPtr := 0
-	for inPtr < len(input) {
-		fomMask = 0
-		code = input[inPtr]
-		inPtr++
-		opcode = int(code) >> 4
+	out := output
+	for len(input) != 0 {
+		fom_mask = 0
+		code = int(input[0])
+		input = input[1:]
+		opcode = code >> 4
 
 		// Handle different opcode forms
-		switch {
-		case opcode >= 0xc && opcode <= 0xe:
+		switch opcode {
+		case 0xc, 0xd, 0xe:
 			opcode -= 6
-			count = int(code) & 0xf
+			count = code & 0xf
 			offset = 16
-		case opcode == 0xf:
-			opcode = int(code) & 0xf
+		case 0xf:
+			opcode = code & 0xf
 			if opcode < 9 {
-				count = int(input[inPtr])
-				inPtr++
-				count |= int(input[inPtr]) << 8
-				inPtr++
+				count = int(input[0])
+				input = input[1:]
+				count |= int(input[0]) << 8
+				input = input[1:]
 			} else {
-				count = 8
-				if opcode >= 0xb {
-					count = 1
+				count = 1
+				if opcode < 0xb {
+					count = 8
 				}
 			}
 			offset = 0
 		default:
 			opcode >>= 1
-			count = int(code) & 0x1f
+			count = code & 0x1f
 			offset = 32
 		}
 
-		// Handle special cases for counts
+		// Handle strange cases for counts
 		if offset != 0 {
-			isfillormix := (opcode == 2) || (opcode == 7)
+			isfillormix = ((opcode == 2) || (opcode == 7))
 			if count == 0 {
 				if isfillormix {
-					count = int(input[inPtr]) + 1
-					inPtr++
+					count = int(input[0]) + 1
+					input = input[1:]
 				} else {
-					count = int(input[inPtr]) + offset
-					inPtr++
+					count = int(input[0]) + offset
+					input = input[1:]
 				}
 			} else if isfillormix {
 				count <<= 3
 			}
 		}
 
-		// Process opcodes
+		// Read preliminary data
 		switch opcode {
 		case 0: // Fill
-			if lastopcode == opcode && !(x == width && prevLine == nil) {
+			if (lastopcode == opcode) && !((x == width) && (prevline == 0)) {
 				insertmix = true
 			}
-
 		case 8: // Bicolour
-			if inPtr+3 > len(input) {
-				return false
-			}
-			copy(colour1[:], input[inPtr:inPtr+3])
-			inPtr += 3
+			colour1[0] = input[0]
+			colour1[1] = input[1]
+			colour1[2] = input[2]
+			input = input[3:]
 			fallthrough
-
 		case 3: // Colour
-			if inPtr+3 > len(input) {
-				return false
-			}
-			copy(colour2[:], input[inPtr:inPtr+3])
-			inPtr += 3
-
+			colour2[0] = input[0]
+			colour2[1] = input[1]
+			colour2[2] = input[2]
+			input = input[3:]
 		case 6, 7: // SetMix/Mix, SetMix/FillOrMix
-			if inPtr+3 > len(input) {
-				return false
-			}
-			copy(mix[:], input[inPtr:inPtr+3])
-			inPtr += 3
+			mix[0] = input[0]
+			mix[1] = input[1]
+			mix[2] = input[2]
+			input = input[3:]
 			opcode -= 5
-
 		case 9: // FillOrMix_1
-			mask = fomMask1
-			opcode = 2
-			fomMask = fomMask1
-
-		case 0xa: // FillOrMix_2
-			mask = fomMask2
-			opcode = 2
-			fomMask = fomMask2
+			mask = 0x03
+			opcode = 0x02
+			fom_mask = 3
+		case 0x0a: // FillOrMix_2
+			mask = 0x05
+			opcode = 0x02
+			fom_mask = 5
 		}
 
 		lastopcode = opcode
 		mixmask = 0
 
-		// Output loop - 修复：实现与C代码REPEAT宏相同的逻辑
+		// Output body
 		for count > 0 {
 			if x >= width {
 				if height <= 0 {
@@ -731,316 +503,139 @@ func bitmapDecompress3(output []byte, width, height int, input []byte) bool {
 				}
 				x = 0
 				height--
-				prevLine = output[(height+1)*width*3 : (height+2)*width*3]
-				line = output[height*width*3 : (height+1)*width*3]
+				prevline = line
+				line = height * width * 3
 			}
 
 			switch opcode {
 			case 0: // Fill
 				if insertmix {
-					if prevLine == nil {
-						copy(line[x*3:(x+1)*3], mix[:])
+					if prevline == 0 {
+						out[3*x+line] = mix[0]
+						out[3*x+line+1] = mix[1]
+						out[3*x+line+2] = mix[2]
 					} else {
-						for i := 0; i < 3; i++ {
-							line[x*3+i] = prevLine[x*3+i] ^ mix[i]
-						}
+						out[3*x+line] = out[prevline+3*x] ^ mix[0]
+						out[3*x+line+1] = out[prevline+3*x+1] ^ mix[1]
+						out[3*x+line+2] = out[prevline+3*x+2] ^ mix[2]
 					}
 					insertmix = false
 					count--
 					x++
-					continue
 				}
-
-				// 修复：实现REPEAT宏的逻辑
-				if prevLine == nil {
-					// REPEAT(line[x*3] = 0; line[x*3+1] = 0; line[x*3+2] = 0;)
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							line[(x+i)*3] = 0
-							line[(x+i)*3+1] = 0
-							line[(x+i)*3+2] = 0
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						line[x*3] = 0
-						line[x*3+1] = 0
-						line[x*3+2] = 0
-						count--
-						x++
-					}
+				if prevline == 0 {
+					REPEAT(func() {
+						out[3*x+line] = 0
+						out[3*x+line+1] = 0
+						out[3*x+line+2] = 0
+					}, &count, &x, width)
 				} else {
-					// REPEAT(copy(line[x*3:(x+1)*3], prevLine[x*3:(x+1)*3]))
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							copy(line[(x+i)*3:(x+i+1)*3], prevLine[(x+i)*3:(x+i+1)*3])
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						copy(line[x*3:(x+1)*3], prevLine[x*3:(x+1)*3])
-						count--
-						x++
-					}
+					REPEAT(func() {
+						out[3*x+line] = out[prevline+3*x]
+						out[3*x+line+1] = out[prevline+3*x+1]
+						out[3*x+line+2] = out[prevline+3*x+2]
+					}, &count, &x, width)
 				}
-
 			case 1: // Mix
-				// 修复：实现REPEAT宏的逻辑
-				if prevLine == nil {
-					// REPEAT(copy(line[x*3:(x+1)*3], mix[:]))
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							copy(line[(x+i)*3:(x+i+1)*3], mix[:])
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						copy(line[x*3:(x+1)*3], mix[:])
-						count--
-						x++
-					}
+				if prevline == 0 {
+					REPEAT(func() {
+						out[3*x+line] = mix[0]
+						out[3*x+line+1] = mix[1]
+						out[3*x+line+2] = mix[2]
+					}, &count, &x, width)
 				} else {
-					// REPEAT(for j := 0; j < 3; j++ { line[x*3+j] = prevLine[x*3+j] ^ mix[j]; })
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							for j := 0; j < 3; j++ {
-								line[(x+i)*3+j] = prevLine[(x+i)*3+j] ^ mix[j]
-							}
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
-						for j := 0; j < 3; j++ {
-							line[x*3+j] = prevLine[x*3+j] ^ mix[j]
-						}
-						count--
-						x++
-					}
+					REPEAT(func() {
+						out[3*x+line] = out[prevline+3*x] ^ mix[0]
+						out[3*x+line+1] = out[prevline+3*x+1] ^ mix[1]
+						out[3*x+line+2] = out[prevline+3*x+2] ^ mix[2]
+					}, &count, &x, width)
 				}
-
 			case 2: // Fill or Mix
-				// 修复：实现REPEAT宏的逻辑
-				if prevLine == nil {
-					// REPEAT(MASK_UPDATE(); if (mask & mixmask) copy(line[x*3:(x+1)*3], mix[:]); else { line[x*3] = 0; line[x*3+1] = 0; line[x*3+2] = 0; })
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							mixmask <<= 1
-							if mixmask == 0 {
-								if fomMask != 0 {
-									mask = fomMask
-								} else {
-									if inPtr >= len(input) {
-										return false
-									}
-									mask = input[inPtr]
-									inPtr++
-								}
-								mixmask = 1
-							}
-							if mask&mixmask != 0 {
-								copy(line[(x+i)*3:(x+i+1)*3], mix[:])
-							} else {
-								line[(x+i)*3] = 0
-								line[(x+i)*3+1] = 0
-								line[(x+i)*3+2] = 0
-							}
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
+				if prevline == 0 {
+					REPEAT(func() {
 						mixmask <<= 1
 						if mixmask == 0 {
-							if fomMask != 0 {
-								mask = fomMask
-							} else {
-								if inPtr >= len(input) {
-									return false
-								}
-								mask = input[inPtr]
-								inPtr++
+							mask = fom_mask
+							if fom_mask == 0 {
+								mask = input[0]
+								input = input[1:]
+								mixmask = 1
 							}
-							mixmask = 1
 						}
 						if mask&mixmask != 0 {
-							copy(line[x*3:(x+1)*3], mix[:])
+							out[3*x+line] = mix[0]
+							out[3*x+line+1] = mix[1]
+							out[3*x+line+2] = mix[2]
 						} else {
-							line[x*3] = 0
-							line[x*3+1] = 0
-							line[x*3+2] = 0
+							out[3*x+line] = 0
+							out[3*x+line+1] = 0
+							out[3*x+line+2] = 0
 						}
-						count--
-						x++
-					}
+					}, &count, &x, width)
 				} else {
-					// REPEAT(MASK_UPDATE(); if (mask & mixmask) for j := 0; j < 3; j++ { line[x*3+j] = prevLine[x*3+j] ^ mix[j]; } else copy(line[x*3:(x+1)*3], prevLine[x*3:(x+1)*3]);)
-					for (count&^0x7) != 0 && (x+8) < width {
-						for i := 0; i < 8; i++ {
-							mixmask <<= 1
-							if mixmask == 0 {
-								if fomMask != 0 {
-									mask = fomMask
-								} else {
-									if inPtr >= len(input) {
-										return false
-									}
-									mask = input[inPtr]
-									inPtr++
-								}
-								mixmask = 1
-							}
-							if mask&mixmask != 0 {
-								for j := 0; j < 3; j++ {
-									line[(x+i)*3+j] = prevLine[(x+i)*3+j] ^ mix[j]
-								}
-							} else {
-								copy(line[(x+i)*3:(x+i+1)*3], prevLine[(x+i)*3:(x+i+1)*3])
-							}
-						}
-						count -= 8
-						x += 8
-					}
-					for count > 0 && x < width {
+					REPEAT(func() {
 						mixmask <<= 1
 						if mixmask == 0 {
-							if fomMask != 0 {
-								mask = fomMask
-							} else {
-								if inPtr >= len(input) {
-									return false
-								}
-								mask = input[inPtr]
-								inPtr++
+							mask = fom_mask
+							if fom_mask == 0 {
+								mask = input[0]
+								input = input[1:]
+								mixmask = 1
 							}
-							mixmask = 1
 						}
 						if mask&mixmask != 0 {
-							for j := 0; j < 3; j++ {
-								line[x*3+j] = prevLine[x*3+j] ^ mix[j]
-							}
+							out[3*x+line] = out[prevline+3*x] ^ mix[0]
+							out[3*x+line+1] = out[prevline+3*x+1] ^ mix[1]
+							out[3*x+line+2] = out[prevline+3*x+2] ^ mix[2]
 						} else {
-							copy(line[x*3:(x+1)*3], prevLine[x*3:(x+1)*3])
+							out[3*x+line] = out[prevline+3*x]
+							out[3*x+line+1] = out[prevline+3*x+1]
+							out[3*x+line+2] = out[prevline+3*x+2]
 						}
-						count--
-						x++
-					}
+					}, &count, &x, width)
 				}
-
 			case 3: // Colour
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(copy(line[x*3:(x+1)*3], colour2[:]))
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						copy(line[(x+i)*3:(x+i+1)*3], colour2[:])
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					copy(line[x*3:(x+1)*3], colour2[:])
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					out[3*x+line] = colour2[0]
+					out[3*x+line+1] = colour2[1]
+					out[3*x+line+2] = colour2[2]
+				}, &count, &x, width)
 			case 4: // Copy
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(copy(line[x*3:(x+1)*3], input[inPtr:inPtr+3]); inPtr += 3;)
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						if inPtr+3 > len(input) {
-							return false
-						}
-						copy(line[(x+i)*3:(x+i+1)*3], input[inPtr:inPtr+3])
-						inPtr += 3
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					if inPtr+3 > len(input) {
-						return false
-					}
-					copy(line[x*3:(x+1)*3], input[inPtr:inPtr+3])
-					inPtr += 3
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					out[3*x+line] = input[0]
+					out[3*x+line+1] = input[1]
+					out[3*x+line+2] = input[2]
+					input = input[3:]
+				}, &count, &x, width)
 			case 8: // Bicolour
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(if (bicolour) { copy(line[x*3:(x+1)*3], colour2[:]); bicolour = false; } else { copy(line[x*3:(x+1)*3], colour1[:]); bicolour = true; count++; })
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						if bicolour {
-							copy(line[(x+i)*3:(x+i+1)*3], colour2[:])
-							bicolour = false
-						} else {
-							copy(line[(x+i)*3:(x+i+1)*3], colour1[:])
-							bicolour = true
-							count++
-						}
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
+				REPEAT(func() {
 					if bicolour {
-						copy(line[x*3:(x+1)*3], colour2[:])
+						out[3*x+line] = colour2[0]
+						out[3*x+line+1] = colour2[1]
+						out[3*x+line+2] = colour2[2]
 						bicolour = false
 					} else {
-						copy(line[x*3:(x+1)*3], colour1[:])
+						out[3*x+line] = colour1[0]
+						out[3*x+line+1] = colour1[1]
+						out[3*x+line+2] = colour1[2]
 						bicolour = true
 						count++
 					}
-					count--
-					x++
-				}
-
+				}, &count, &x, width)
 			case 0xd: // White
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(line[x*3] = 0xff; line[x*3+1] = 0xff; line[x*3+2] = 0xff;)
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						line[(x+i)*3] = 0xff
-						line[(x+i)*3+1] = 0xff
-						line[(x+i)*3+2] = 0xff
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					line[x*3] = 0xff
-					line[x*3+1] = 0xff
-					line[x*3+2] = 0xff
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					out[3*x+line] = 0xff
+					out[3*x+line+1] = 0xff
+					out[3*x+line+2] = 0xff
+				}, &count, &x, width)
 			case 0xe: // Black
-				// 修复：实现REPEAT宏的逻辑
-				// REPEAT(line[x*3] = 0; line[x*3+1] = 0; line[x*3+2] = 0;)
-				for (count&^0x7) != 0 && (x+8) < width {
-					for i := 0; i < 8; i++ {
-						line[(x+i)*3] = 0
-						line[(x+i)*3+1] = 0
-						line[(x+i)*3+2] = 0
-					}
-					count -= 8
-					x += 8
-				}
-				for count > 0 && x < width {
-					line[x*3] = 0
-					line[x*3+1] = 0
-					line[x*3+2] = 0
-					count--
-					x++
-				}
-
+				REPEAT(func() {
+					out[3*x+line] = 0
+					out[3*x+line+1] = 0
+					out[3*x+line+2] = 0
+				}, &count, &x, width)
 			default:
+				fmt.Printf("bitmap opcode 0x%x\n", opcode)
 				return false
 			}
 		}
@@ -1051,202 +646,139 @@ func bitmapDecompress3(output []byte, width, height int, input []byte) bool {
 
 // bitmapDecompress4 decompresses 4 bytes per pixel bitmap data
 func bitmapDecompress4(output []byte, width, height int, input []byte) bool {
-	if len(input) == 0 {
+	var (
+		code             int
+		onceBytes, total int
+	)
+
+	code = int(input[0])
+	input = input[1:]
+	if code != 0x10 {
 		return false
 	}
 
-	if input[0] != 0x10 {
-		return false
-	}
+	total = 1
+	onceBytes = processPlane(input, width, height, output, 3)
+	total += onceBytes
+	input = input[onceBytes:]
 
-	totalProcessed := 1
-	inPtr := 1
+	onceBytes = processPlane(input, width, height, output, 2)
+	total += onceBytes
+	input = input[onceBytes:]
 
-	// 修复：按照C代码的顺序处理颜色平面 (BGRA -> RGBA)
-	// 处理B平面 (output + 2)
-	bytesProcessed := processPlane(input[inPtr:], width, height, output[2:], len(input)-totalProcessed)
-	if bytesProcessed <= 0 {
-		return false
-	}
-	totalProcessed += bytesProcessed
-	inPtr += bytesProcessed
+	onceBytes = processPlane(input, width, height, output, 1)
+	total += onceBytes
+	input = input[onceBytes:]
 
-	// 处理G平面 (output + 1)
-	bytesProcessed = processPlane(input[inPtr:], width, height, output[1:], len(input)-totalProcessed)
-	if bytesProcessed <= 0 {
-		return false
-	}
-	totalProcessed += bytesProcessed
-	inPtr += bytesProcessed
+	onceBytes = processPlane(input, width, height, output, 0)
+	total += onceBytes
 
-	// 处理R平面 (output + 0)
-	bytesProcessed = processPlane(input[inPtr:], width, height, output[0:], len(input)-totalProcessed)
-	if bytesProcessed <= 0 {
-		return false
-	}
-	totalProcessed += bytesProcessed
-	inPtr += bytesProcessed
-
-	// 处理A平面 (output + 3)
-	bytesProcessed = processPlane(input[inPtr:], width, height, output[3:], len(input)-totalProcessed)
-	if bytesProcessed <= 0 {
-		return false
-	}
-	totalProcessed += bytesProcessed
-
-	return totalProcessed == len(input)
+	return total == len(input)+1 // +1 for the initial code byte
 }
 
 // processPlane decompresses a single color plane
-func processPlane(input []byte, width, height int, output []byte, size int) int {
+func processPlane(input []byte, width, height int, output []byte, offset int) int {
 	var (
-		inPtr    int
-		lastLine []byte
-		thisLine []byte
-		x        int
-		code     byte
+		indexw   int
+		indexh   int
+		code     int
 		collen   int
 		replen   int
-		color    int
+		color    byte
+		x        byte
 		revcode  int
+		lastline int
+		thisline int
 	)
 
-	for indexh := 0; indexh < height; indexh++ {
-		thisLine = output[(height-indexh-1)*width*4:]
-		x = 0
+	ln := len(input)
+	lastline = 0
+	indexh = 0
+	i := 0
+
+	for indexh < height {
+		thisline = offset + (width * height * 4) - ((indexh + 1) * width * 4)
 		color = 0
+		indexw = 0
+		i = thisline
 
-		if lastLine == nil {
-			for x < width {
-				if inPtr >= len(input) {
-					return -1
-				}
-
-				code = input[inPtr]
-				inPtr++
-
-				replen = int(code & 0xf)
-				collen = int((code >> 4) & 0xf)
+		if lastline == 0 {
+			for indexw < width {
+				code = int(input[0])
+				input = input[1:]
+				replen = code & 0xf
+				collen = (code >> 4) & 0xf
 				revcode = (replen << 4) | collen
-
-				if revcode <= 47 && revcode >= 16 {
+				if (revcode <= 47) && (revcode >= 16) {
 					replen = revcode
 					collen = 0
 				}
-
 				for collen > 0 {
-					if inPtr >= len(input) {
-						return -1
-					}
-					color = int(input[inPtr])
-					inPtr++
-					thisLine[x*4] = byte(color)
-					x++
+					color = input[0]
+					input = input[1:]
+					output[i] = color
+					i += 4
+					indexw++
 					collen--
 				}
-
 				for replen > 0 {
-					thisLine[x*4] = byte(color)
-					x++
+					output[i] = color
+					i += 4
+					indexw++
 					replen--
 				}
 			}
 		} else {
-			for x < width {
-				if inPtr >= len(input) {
-					return -1
-				}
-
-				code = input[inPtr]
-				inPtr++
-
-				replen = int(code & 0xf)
-				collen = int((code >> 4) & 0xf)
+			for indexw < width {
+				code = int(input[0])
+				input = input[1:]
+				replen = code & 0xf
+				collen = (code >> 4) & 0xf
 				revcode = (replen << 4) | collen
-
-				if revcode <= 47 && revcode >= 16 {
+				if (revcode <= 47) && (revcode >= 16) {
 					replen = revcode
 					collen = 0
 				}
-
 				for collen > 0 {
-					if inPtr >= len(input) {
-						return -1
-					}
-					x2 := int(input[inPtr])
-					inPtr++
-
-					if x2&1 != 0 {
-						x2 = (x2 >> 1) + 1
-						color = -x2
+					x = input[0]
+					input = input[1:]
+					if x&1 != 0 {
+						x = x >> 1
+						x = x + 1
+						color = -x
 					} else {
-						x2 = x2 >> 1
-						color = x2
+						x = x >> 1
+						color = x
 					}
-
-					x2 = int(lastLine[x*4]) + color
-					thisLine[x*4] = byte(x2)
-					x++
+					x = output[indexw*4+lastline] + color
+					output[i] = x
+					i += 4
+					indexw++
 					collen--
 				}
-
 				for replen > 0 {
-					x2 := int(lastLine[x*4]) + color
-					thisLine[x*4] = byte(x2)
-					x++
+					x = output[indexw*4+lastline] + color
+					output[i] = x
+					i += 4
+					indexw++
 					replen--
 				}
 			}
 		}
-
-		lastLine = thisLine
+		indexh++
+		lastline = thisline
 	}
-
-	return inPtr
+	return ln - len(input)
 }
 
 // DebugColorConversion 调试颜色转换函数
 func DebugColorConversion() {
-	fmt.Println("=== 颜色转换调试信息 ===")
-
-	// 测试15位颜色转换
-	test15Bit := uint16(0x7C1F) // RGB555: 红色最大值
-	r15 := uint8((test15Bit & 0x7c00) >> 10)
-	g15 := uint8((test15Bit & 0x03e0) >> 5)
-	b15 := uint8(test15Bit & 0x001f)
-	r15_8 := r15 * 255 / 31
-	g15_8 := g15 * 255 / 31
-	b15_8 := b15 * 255 / 31
-
-	fmt.Printf("15位测试 (0x%04X): R=%d(%d) G=%d(%d) B=%d(%d)\n",
-		test15Bit, r15, r15_8, g15, g15_8, b15, b15_8)
-
-	// 测试16位颜色转换
-	test16Bit := uint16(0xF81F) // RGB565: 红色最大值
-	r16 := uint8((test16Bit & 0xf800) >> 11)
-	g16 := uint8((test16Bit & 0x07e0) >> 5)
-	b16 := uint8(test16Bit & 0x001f)
-	r16_8 := r16 * 255 / 31
-	g16_8 := g16 * 255 / 63
-	b16_8 := b16 * 255 / 31
-
-	fmt.Printf("16位测试 (0x%04X): R=%d(%d) G=%d(%d) B=%d(%d)\n",
-		test16Bit, r16, r16_8, g16, g16_8, b16, b16_8)
-
-	// 测试白色
-	white15 := uint16(0x7FFF) // RGB555白色
-	white16 := uint16(0xFFFF) // RGB565白色
-
-	r15w := uint8((white15&0x7c00)>>10) * 255 / 31
-	g15w := uint8((white15&0x03e0)>>5) * 255 / 31
-	b15w := uint8(white15&0x001f) * 255 / 31
-
-	r16w := uint8((white16&0xf800)>>11) * 255 / 31
-	g16w := uint8((white16&0x07e0)>>5) * 255 / 63
-	b16w := uint8(white16&0x001f) * 255 / 31
-
-	fmt.Printf("15位白色 (0x%04X): R=%d G=%d B=%d\n", white15, r15w, g15w, b15w)
-	fmt.Printf("16位白色 (0x%04X): R=%d G=%d B=%d\n", white16, r16w, g16w, b16w)
-
-	fmt.Println("=== 调试信息结束 ===")
+	fmt.Println("=== RLE解压缩函数调试信息 ===")
+	fmt.Println("BitmapDecompress15: 15位RGB555解压缩")
+	fmt.Println("BitmapDecompress16: 16位RGB565解压缩")
+	fmt.Println("BitmapDecompress24: 24位BGR解压缩")
+	fmt.Println("BitmapDecompress32: 32位BGRA解压缩")
+	fmt.Println("REPEAT宏: 已正确实现")
+	fmt.Println("字节序: 使用小端序（低字节在前）")
+	fmt.Println("颜色格式: RDP BGR/BGRA -> RGBA")
 }

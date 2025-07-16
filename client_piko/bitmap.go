@@ -170,6 +170,24 @@ func (bp *BitmapProcessor) processRectangle(index int, rect pdu.BitmapData) map[
 		return nil
 	}
 
+	// 添加调试信息
+	if GetIsDebug() {
+		glog.Debug("矩形", index, "处理完成:", map[string]interface{}{
+			"processedDataLength": len(processedData),
+			"expectedLength":      targetWidth * targetHeight * 4,
+			"firstFewBytes": func() []string {
+				if len(processedData) >= 16 {
+					preview := make([]string, 0)
+					for j := 0; j < 16; j++ {
+						preview = append(preview, fmt.Sprintf("0x%02x", processedData[j]))
+					}
+					return preview
+				}
+				return []string{}
+			}(),
+		})
+	}
+
 	// 发送位图数据 - 与前端格式完全对齐
 	return map[string]interface{}{
 		"destLeft":     rect.DestLeft,
@@ -233,12 +251,17 @@ func (bp *BitmapProcessor) detectBlackBitmap(index int, rect pdu.BitmapData) {
 	// 检查数据是否全为0
 	allZero := true
 	sampleCount := 0
+	nonZeroCount := 0
 	maxSample := min(100, len(rect.BitmapDataStream)) // 最多检查100个字节
 
 	for i := 0; i < maxSample; i++ {
 		if rect.BitmapDataStream[i] != 0 {
-			allZero = false
-			break
+			nonZeroCount++
+			// 如果发现非零字节，检查是否足够多
+			if nonZeroCount > 5 { // 允许最多5个非零字节
+				allZero = false
+				break
+			}
 		}
 		sampleCount++
 	}
@@ -256,6 +279,7 @@ func (bp *BitmapProcessor) detectBlackBitmap(index int, rect pdu.BitmapData) {
 			"isCompress":   rect.IsCompress(),
 			"dataLength":   len(rect.BitmapDataStream),
 			"sampleCount":  sampleCount,
+			"nonZeroCount": nonZeroCount,
 		})
 
 		// 显示前20个字节的详细信息
@@ -475,13 +499,13 @@ func (bp *BitmapProcessor) convertUncompressedData(index int, rect pdu.BitmapDat
 		}
 	}
 
-	// 修复：创建基于原始尺寸的RGBA缓冲区，而不是目标尺寸
+	// 修复：创建基于原始尺寸的RGBA缓冲区，用于颜色转换
 	originalRGBASize := int(rect.Width) * int(rect.Height) * 4
-	decompressedData := make([]byte, originalRGBASize)
+	tempRGBA := make([]byte, originalRGBASize)
 
 	// 添加调试信息
 	// debugLogSimple("矩形", index, "开始颜色转换，位深度:", rect.BitsPerPixel, "原始尺寸:", rect.Width, "x", rect.Height)
-	// debugLogSimple("矩形", index, "输入数据长度:", len(rect.BitmapDataStream), "输出缓冲区长度:", len(decompressedData))
+	// debugLogSimple("矩形", index, "输入数据长度:", len(rect.BitmapDataStream), "临时缓冲区长度:", len(tempRGBA))
 
 	// 显示输入数据的前几个字节
 	if GetIsDebug() && len(rect.BitmapDataStream) > 0 {
@@ -492,36 +516,63 @@ func (bp *BitmapProcessor) convertUncompressedData(index int, rect pdu.BitmapDat
 		glog.Debug("矩形", index, "输入数据预览:", strings.Join(previewBytes, ", "))
 	}
 
-	// 修复：使用原始数据尺寸进行颜色转换，但输出到目标尺寸的缓冲区
+	// 修复：使用原始数据尺寸进行颜色转换
 	switch rect.BitsPerPixel {
 	case 15:
 		// debugLogSimple("矩形", index, "调用convert15ToRGBA")
-		convert15ToRGBA(rect.BitmapDataStream, decompressedData, int(rect.Width), int(rect.Height))
+		convert15ToRGBA(rect.BitmapDataStream, tempRGBA, int(rect.Width), int(rect.Height))
 	case 16:
 		// debugLogSimple("矩形", index, "调用convert16ToRGBA")
-		convert16ToRGBA(rect.BitmapDataStream, decompressedData, int(rect.Width), int(rect.Height))
+		convert16ToRGBA(rect.BitmapDataStream, tempRGBA, int(rect.Width), int(rect.Height))
 	case 24:
 		// debugLogSimple("矩形", index, "调用convert24ToRGBA")
-		convert24ToRGBA(rect.BitmapDataStream, decompressedData, int(rect.Width), int(rect.Height))
+		convert24ToRGBA(rect.BitmapDataStream, tempRGBA, int(rect.Width), int(rect.Height))
 	case 32:
 		// debugLogSimple("矩形", index, "调用convert32ToRGBA")
-		convert32ToRGBA(rect.BitmapDataStream, decompressedData, int(rect.Width), int(rect.Height))
+		convert32ToRGBA(rect.BitmapDataStream, tempRGBA, int(rect.Width), int(rect.Height))
 	default:
 		glog.Warn("矩形", index, "不支持的位深度:", rect.BitsPerPixel)
 		return nil
 	}
 
-	// 显示输出数据的前几个字节
-	if GetIsDebug() && len(decompressedData) > 0 {
+	// 显示临时输出数据的前几个字节
+	if GetIsDebug() && len(tempRGBA) > 0 {
 		previewBytes := make([]string, 0)
-		for j := 0; j < min(16, len(decompressedData)); j++ {
-			previewBytes = append(previewBytes, fmt.Sprintf("0x%02x", decompressedData[j]))
+		for j := 0; j < min(16, len(tempRGBA)); j++ {
+			previewBytes = append(previewBytes, fmt.Sprintf("0x%02x", tempRGBA[j]))
 		}
-		glog.Debug("矩形", index, "输出数据预览:", strings.Join(previewBytes, ", "))
+		glog.Debug("矩形", index, "临时输出数据预览:", strings.Join(previewBytes, ", "))
 	}
 
-	// debugLogSimple("矩形", index, "未压缩数据转换成功，原始大小:", len(rect.BitmapDataStream), "转换后大小:", len(decompressedData))
-	return decompressedData
+	// 如果原始尺寸和目标尺寸不同，需要调整数据
+	if originalRGBASize != expectedRGBASize {
+		glog.Debug("矩形", index, "尺寸调整: 原始RGBA大小:", originalRGBASize, "目标RGBA大小:", expectedRGBASize)
+
+		// 创建最终输出缓冲区
+		decompressedData := make([]byte, expectedRGBASize)
+
+		// 简单的复制策略：如果目标更大，用默认颜色填充；如果目标更小，截断
+		if expectedRGBASize > originalRGBASize {
+			// 目标更大，复制原始数据并用默认颜色填充
+			copy(decompressedData, tempRGBA)
+			for i := originalRGBASize; i < expectedRGBASize; i += 4 {
+				if i+3 < expectedRGBASize {
+					decompressedData[i] = 128   // R (默认灰色)
+					decompressedData[i+1] = 128 // G
+					decompressedData[i+2] = 128 // B
+					decompressedData[i+3] = 255 // A (不透明)
+				}
+			}
+		} else {
+			// 目标更小，截断原始数据
+			copy(decompressedData, tempRGBA[:expectedRGBASize])
+		}
+
+		return decompressedData
+	}
+
+	// 尺寸相同，直接返回
+	return tempRGBA
 }
 
 // 颜色转换函数定义
@@ -552,16 +603,6 @@ func convert15ToRGBA(src []byte, dst []byte, width, height int) {
 	if len(dst) < expectedDstSize {
 		glog.Error("convert15ToRGBA: 输出缓冲区不足，期望:", expectedDstSize, "实际:", len(dst))
 		return
-	}
-
-	// 修复：初始化输出缓冲区为透明黑色，避免未初始化像素显示为黑色方块
-	for i := 0; i < len(dst); i += 4 {
-		if i+3 < len(dst) {
-			dst[i] = 0   // R
-			dst[i+1] = 0 // G
-			dst[i+2] = 0 // B
-			dst[i+3] = 0 // A (透明)
-		}
 	}
 
 	// 显示输入数据的前几个字节用于调试
@@ -599,21 +640,16 @@ func convert15ToRGBA(src []byte, dst []byte, width, height int) {
 			// 修复：RDP使用小端序，低字节在前
 			val := uint16(src[i*2]) | uint16(src[i*2+1])<<8
 
-			// 修复：正确的RGB555转换 - 使用与core/io.go中RGB555ToRGB函数相同的转换方式
+			// 修复：使用与core/io.go中RGB555ToRGB函数完全相同的转换方式
 			// RGB555格式：RRRRRGGGGGBBBBB (5-5-5)
-			r := uint8((val & 0x7C00) >> 10) // 5 bits red (bits 10-14)
-			g := uint8((val & 0x03E0) >> 5)  // 5 bits green (bits 5-9)
-			b := uint8(val & 0x001F)         // 5 bits blue (bits 0-4)
-
-			// 转换为8位颜色
-			r8 := r * 255 / 31 // 5-bit to 8-bit
-			g8 := g * 255 / 31 // 5-bit to 8-bit
-			b8 := b * 255 / 31 // 5-bit to 8-bit
+			r := uint8((val & 0x7C00) >> 7) // 5 bits red -> 8 bits
+			g := uint8((val & 0x03E0) >> 2) // 5 bits green -> 8 bits
+			b := uint8((val & 0x001F) << 3) // 5 bits blue -> 8 bits
 
 			// 输出RGBA格式
-			dst[i*4+0] = r8  // R
-			dst[i*4+1] = g8  // G
-			dst[i*4+2] = b8  // B
+			dst[i*4+0] = r   // R
+			dst[i*4+1] = g   // G
+			dst[i*4+2] = b   // B
 			dst[i*4+3] = 255 // A
 
 			// 调试第一个像素
@@ -621,8 +657,8 @@ func convert15ToRGBA(src []byte, dst []byte, width, height int) {
 				glog.Debug("convert15ToRGBA: 第一个像素调试信息:")
 				glog.Debug("  原始字节:", fmt.Sprintf("0x%02x 0x%02x", src[i*2], src[i*2+1]))
 				glog.Debug("  小端序值:", fmt.Sprintf("0x%04X", val))
-				glog.Debug("  RGB555: R=%d G=%d B=%d", r, g, b)
-				glog.Debug("  8位转换: R=%d G=%d B=%d", r8, g8, b8)
+				glog.Debug("  RGB555: R=%d G=%d B=%d", (val&0x7C00)>>10, (val&0x03E0)>>5, val&0x001F)
+				glog.Debug("  8位转换: R=%d G=%d B=%d", r, g, b)
 			}
 		}
 	}
@@ -699,21 +735,16 @@ func convert16ToRGBA(src []byte, dst []byte, width, height int) {
 			// 修复：RDP使用小端序，低字节在前
 			val := uint16(src[i*2]) | uint16(src[i*2+1])<<8
 
-			// 修复：正确的RGB565转换 - 使用与core/io.go中RGB565ToRGB函数相同的转换方式
+			// 修复：使用与core/io.go中RGB565ToRGB函数完全相同的转换方式
 			// RGB565格式：RRRRRGGGGGGBBBBB (5-6-5)
-			r := uint8((val & 0xF800) >> 11) // 5 bits red (bits 11-15)
-			g := uint8((val & 0x07E0) >> 5)  // 6 bits green (bits 5-10)
-			b := uint8(val & 0x001F)         // 5 bits blue (bits 0-4)
-
-			// 转换为8位颜色
-			r8 := r * 255 / 31 // 5-bit to 8-bit
-			g8 := g * 255 / 63 // 6-bit to 8-bit
-			b8 := b * 255 / 31 // 5-bit to 8-bit
+			r := uint8((val & 0xF800) >> 8) // 5 bits red -> 8 bits
+			g := uint8((val & 0x07E0) >> 3) // 6 bits green -> 8 bits
+			b := uint8((val & 0x001F) << 3) // 5 bits blue -> 8 bits
 
 			// 输出RGBA格式
-			dst[i*4+0] = r8  // R
-			dst[i*4+1] = g8  // G
-			dst[i*4+2] = b8  // B
+			dst[i*4+0] = r   // R
+			dst[i*4+1] = g   // G
+			dst[i*4+2] = b   // B
 			dst[i*4+3] = 255 // A
 
 			// 调试第一个像素
@@ -721,8 +752,8 @@ func convert16ToRGBA(src []byte, dst []byte, width, height int) {
 				glog.Debug("convert16ToRGBA: 第一个像素调试信息:")
 				glog.Debug("  原始字节:", fmt.Sprintf("0x%02x 0x%02x", src[i*2], src[i*2+1]))
 				glog.Debug("  小端序值:", fmt.Sprintf("0x%04X", val))
-				glog.Debug("  RGB565: R=%d G=%d B=%d", r, g, b)
-				glog.Debug("  8位转换: R=%d G=%d B=%d", r8, g8, b8)
+				glog.Debug("  RGB565: R=%d G=%d B=%d", (val&0xF800)>>11, (val&0x07E0)>>5, val&0x001F)
+				glog.Debug("  8位转换: R=%d G=%d B=%d", r, g, b)
 			}
 		}
 	}
@@ -927,25 +958,31 @@ func detectBlackOutput(functionName string, output []byte, width, height int) {
 	// 检查RGBA数据是否全为0（全黑）
 	allBlack := true
 	sampleCount := 0
+	nonZeroCount := 0
 	maxSample := min(400, len(output)) // 最多检查100个像素（400字节）
 
 	for i := 0; i < maxSample; i += 4 { // 每4字节一个像素
 		if i+3 < len(output) {
 			// 检查RGB通道是否都为0（忽略Alpha通道）
 			if output[i] != 0 || output[i+1] != 0 || output[i+2] != 0 {
-				allBlack = false
-				break
+				nonZeroCount++
+				// 如果发现非零像素，检查是否足够多
+				if nonZeroCount > 10 { // 允许最多10个非零像素
+					allBlack = false
+					break
+				}
 			}
 			sampleCount++
 		}
 	}
 
-	if allBlack {
+	if allBlack && sampleCount > 0 {
 		glog.Warn("⚠️ 检测到全黑输出！函数:", functionName, "详情:", map[string]interface{}{
-			"width":       width,
-			"height":      height,
-			"outputSize":  len(output),
-			"sampleCount": sampleCount,
+			"width":        width,
+			"height":       height,
+			"outputSize":   len(output),
+			"sampleCount":  sampleCount,
+			"nonZeroCount": nonZeroCount,
 		})
 
 		// 显示前20个字节的详细信息
