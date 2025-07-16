@@ -2,7 +2,7 @@
 
 A Windows RDP remote desktop tool based on grdp protocol and piko network forwarding. Access and control Windows remote desktop through web browsers without complex network configuration and external network addresses.
 
-[grdp](https://github.com/xxx/grdp) - Go language implementation of RDP protocol client
+[grdp](https://github.com/tomatome/grdp) - Go language implementation of RDP protocol client
 [piko](https://github.com/andydunstall/piko) - Lightweight network tunnel service
 
 ## Project Features
@@ -66,7 +66,7 @@ docker-compose up -d
 
 ```bash
 # Download client
-wget https://github.com/friddle/grdp/releases/download/v1.0.0/goxrdp-linux-amd64 -O ./goxrdp
+wget https://github.com/friddle/grdp/releases/download/v1.0.1/goxrdp-linux-amd64 -O ./goxrdp
 chmod +x ./goxrdp
 
 # Basic connection
@@ -82,8 +82,27 @@ chmod +x ./goxrdp
 ./goxrdp --name=windows-server --remote=192.168.1.100:8088 --auto-exit=false
 ```
 
+#### Windows Client
+
+```cmd
+# Download client
+# Download goxrdp-windows-amd64.exe from https://github.com/friddle/grdp/releases/download/v1.0.1/goxrdp-windows-amd64.exe
+
+# Basic connection
+goxrdp-windows-amd64.exe --name=windows-server --remote=192.168.1.100:8088
+
+# Specify RDP server and user
+goxrdp-windows-amd64.exe --name=windows-server --remote=192.168.1.100:8088 ^
+  --xrdp-host=192.168.1.200 ^
+  --xrdp-user=Administrator ^
+  --xrdp-pass=password
+
+# Disable auto-exit
+goxrdp-windows-amd64.exe --name=windows-server --remote=192.168.1.100:8088 --auto-exit=false
+```
 
 ![Client Startup Screenshot](screenshot/start_cli.png)
+![Client GUI Screenshot](screenshot/start_gui.png)
 ![Web Remote Desktop Screenshot](screenshot/webui.png)
 
 ## Access Method
