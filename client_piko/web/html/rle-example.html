@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RLE解压缩示例</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .demo-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fafafa;
+        }
+        .canvas-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            max-width: 100%;
+            height: auto;
+        }
+        .controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+        }
+        .error {
+            background: #ffe7e7;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+        .success {
+            background: #e7ffe7;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RLE解压缩库示例</h1>
+        
+        <div class="info">
+            <h3>功能说明</h3>
+            <p>这是一个基于Go代码逻辑的纯JavaScript RLE解压缩库，支持以下格式：</p>
+            <ul>
+                <li><strong>15位 (RGB555)</strong> - 5位红、5位绿、5位蓝</li>
+                <li><strong>16位 (RGB565)</strong> - 5位红、6位绿、5位蓝</li>
+                <li><strong>24位 (BGR)</strong> - 8位蓝、8位绿、8位红</li>
+                <li><strong>32位 (BGRA)</strong> - 8位蓝、8位绿、8位红、8位透明</li>
+            </ul>
+        </div>
+
+        <div class="demo-section">
+            <h3>测试解压缩功能</h3>
+            <div class="controls">
+                <button onclick="testRGB555()">测试 RGB555 解压缩</button>
+                <button onclick="testRGB565()">测试 RGB565 解压缩</button>
+                <button onclick="testBGR24()">测试 BGR24 解压缩</button>
+                <button onclick="testBGRA32()">测试 BGRA32 解压缩</button>
+                <button onclick="clearCanvas()">清除画布</button>
+            </div>
+            
+            <div class="canvas-container">
+                <canvas id="outputCanvas" width="400" height="300"></canvas>
+            </div>
+            
+            <div id="status"></div>
+        </div>
+
+        <div class="demo-section">
+            <h3>使用示例代码</h3>
+            <pre><code>// 创建解压缩器实例
+const decompressor = new RLEDecompressor();
+
+// 解压缩15位RGB555数据
+const output = new Uint8Array(width * height * 4); // RGBA格式
+const success = decompressor.bitmapDecompress15(
+    output,           // 输出缓冲区
+    outputWidth,      // 输出宽度
+    outputHeight,     // 输出高度
+    inputWidth,       // 输入宽度
+    inputHeight,      // 输入高度
+    compressedData    // 压缩的输入数据
+);
+
+// 将结果绘制到Canvas
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const imageData = ctx.createImageData(width, height);
+imageData.data.set(output);
+ctx.putImageData(imageData, 0, 0);</code></pre>
+        </div>
+
+        <div class="demo-section">
+            <h3>技术特性</h3>
+            <ul>
+                <li><strong>字节序</strong>：使用小端序（低字节在前），符合RDP协议</li>
+                <li><strong>颜色转换</strong>：自动将RDP的BGR/BGRA格式转换为Web标准的RGBA格式</li>
+                <li><strong>性能优化</strong>：使用TypedArray提高性能，支持大图像处理</li>
+                <li><strong>错误处理</strong>：完善的错误检查和异常处理</li>
+                <li><strong>兼容性</strong>：支持Node.js和浏览器环境</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="../js/rle-decompress.js"></script>
+    <script>
+        // 全局变量
+        let decompressor;
+        let canvas;
+        let ctx;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            decompressor = new RLEDecompressor();
+            canvas = document.getElementById('outputCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // 显示调试信息
+            decompressor.debugColorConversion();
+            
+            showStatus('RLE解压缩库已加载，请选择测试功能', 'info');
+        });
+
+        // 显示状态信息
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = type;
+            statusDiv.innerHTML = `<strong>${type.toUpperCase()}:</strong> ${message}`;
+        }
+
+        // 清除画布
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            showStatus('画布已清除', 'info');
+        }
+
+        // 生成测试数据 - 简单的渐变图案
+        function generateTestData(width, height, format) {
+            const data = [];
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const r = Math.floor((x / width) * 255);
+                    const g = Math.floor((y / height) * 255);
+                    const b = Math.floor(((x + y) / (width + height)) * 255);
+                    
+                    switch (format) {
+                        case 'rgb555':
+                            // RGB555: RRRRRGGGGGGBBBBB
+                            const rgb555 = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+                            data.push(rgb555 & 0xFF, (rgb555 >> 8) & 0xFF);
+                            break;
+                        case 'rgb565':
+                            // RGB565: RRRRRGGGGGGBBBBB
+                            const rgb565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                            data.push(rgb565 & 0xFF, (rgb565 >> 8) & 0xFF);
+                            break;
+                        case 'bgr24':
+                            // BGR24: BGR
+                            data.push(b, g, r);
+                            break;
+                        case 'bgra32':
+                            // BGRA32: BGRA
+                            data.push(b, g, r, 255);
+                            break;
+                    }
+                }
+            }
+            
+            return new Uint8Array(data);
+        }
+
+        // 测试RGB555解压缩
+        function testRGB555() {
+            try {
+                const width = 200;
+                const height = 150;
+                const testData = generateTestData(width, height, 'rgb555');
+                
+                // 创建输出缓冲区
+                const output = new Uint8Array(width * height * 4);
+                
+                // 执行解压缩
+                const success = decompressor.bitmapDecompress15(
+                    output, width, height, width, height, testData
+                );
+                
+                if (success) {
+                    // 绘制到Canvas
+                    const imageData = ctx.createImageData(width, height);
+                    imageData.data.set(output);
+                    ctx.putImageData(imageData, 0, 0);
+                    
+                    showStatus(`RGB555解压缩成功！图像尺寸: ${width}x${height}`, 'success');
+                } else {
+                    showStatus('RGB555解压缩失败', 'error');
+                }
+            } catch (error) {
+                showStatus(`RGB555解压缩错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试RGB565解压缩
+        function testRGB565() {
+            try {
+                const width = 200;
+                const height = 150;
+                const testData = generateTestData(width, height, 'rgb565');
+                
+                const output = new Uint8Array(width * height * 4);
+                
+                const success = decompressor.bitmapDecompress16(
+                    output, width, height, width, height, testData
+                );
+                
+                if (success) {
+                    const imageData = ctx.createImageData(width, height);
+                    imageData.data.set(output);
+                    ctx.putImageData(imageData, 0, 0);
+                    
+                    showStatus(`RGB565解压缩成功！图像尺寸: ${width}x${height}`, 'success');
+                } else {
+                    showStatus('RGB565解压缩失败', 'error');
+                }
+            } catch (error) {
+                showStatus(`RGB565解压缩错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试BGR24解压缩
+        function testBGR24() {
+            try {
+                const width = 200;
+                const height = 150;
+                const testData = generateTestData(width, height, 'bgr24');
+                
+                const output = new Uint8Array(width * height * 4);
+                
+                const success = decompressor.bitmapDecompress24(
+                    output, width, height, width, height, testData
+                );
+                
+                if (success) {
+                    const imageData = ctx.createImageData(width, height);
+                    imageData.data.set(output);
+                    ctx.putImageData(imageData, 0, 0);
+                    
+                    showStatus(`BGR24解压缩成功！图像尺寸: ${width}x${height}`, 'success');
+                } else {
+                    showStatus('BGR24解压缩失败', 'error');
+                }
+            } catch (error) {
+                showStatus(`BGR24解压缩错误: ${error.message}`, 'error');
+            }
+        }
+
+        // 测试BGRA32解压缩
+        function testBGRA32() {
+            try {
+                const width = 200;
+                const height = 150;
+                const testData = generateTestData(width, height, 'bgra32');
+                
+                const output = new Uint8Array(width * height * 4);
+                
+                const success = decompressor.bitmapDecompress32(
+                    output, width, height, width, height, testData
+                );
+                
+                if (success) {
+                    const imageData = ctx.createImageData(width, height);
+                    imageData.data.set(output);
+                    ctx.putImageData(imageData, 0, 0);
+                    
+                    showStatus(`BGRA32解压缩成功！图像尺寸: ${width}x${height}`, 'success');
+                } else {
+                    showStatus('BGRA32解压缩失败', 'error');
+                }
+            } catch (error) {
+                showStatus(`BGRA32解压缩错误: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html> 
